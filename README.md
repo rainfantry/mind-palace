@@ -9,6 +9,8 @@ This is a learning project. It's deliberately built with **no framework and no b
 step** so every moving part is visible and hackable. This README explains how it's
 put together, not just what it does.
 
+![Mind Palace in action — a hand pinches and drags glowing memory nodes connected by lines, with the webcam feed ghosted behind](assets/demo.gif)
+
 ---
 
 ## Run it

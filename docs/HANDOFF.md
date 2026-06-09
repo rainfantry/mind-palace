@@ -51,36 +51,41 @@ python -m http.server 8000   # or serve.bat on Windows
 ## File layout
 
 ```
-index.html              entry + importmap + all the DOM
-css/style.css           all styling
-data/memories.json      public seed (safe — commit this)
-data/memories.local.json  George's real archive (GITIGNORED — never commit)
-js/main.js              boot + wiring (START HERE)
-js/memories.js          load/merge data
-js/store.js             localStorage persistence
-js/scene.js             three.js world
-js/nodes.js             orbs
-js/graph.js             edges + force sim
-js/hands.js             webcam → cursor/pinch/gesture (+ mouse fallback)
-js/interaction.js       hand → orb behaviour
-js/voice.js             TTS (EL clone / browser)
-js/voice.local.js       EL key + voiceId (GITIGNORED)
+index.html                 entry + importmap + all the DOM
+css/style.css              all styling
+assets/demo.gif            the README animation
+data/memories.json         public seed (safe — commit this)
+data/memories.local.json   George's real archive (GITIGNORED — never commit)
+js/main.js                 boot + wiring (START HERE)
+js/memories.js             load/merge data (seed → local file → localStorage)
+js/store.js                localStorage persistence
+js/scene.js                three.js world + the wireframe force-sphere
+js/nodes.js                orbs + labels, per-category colours
+js/graph.js                edges + force sim (centre anchor + category grouping)
+js/hands.js                webcam → cursor/pinch/spread/gesture (+ mouse fallback)
+js/interaction.js          hands → orbs: grab/drag/brush/expand + nav
+js/voice.js                TTS (EL clone / browser)
+js/voice.local.js          EL key + voiceId (GITIGNORED)
 js/voice.local.example.js  template for the above
-js/agent.js             local-model chat
-js/agent.config.js      local-model settings (no secret, committed)
-js/editor.js            add/edit/delete memories
-js/ui.js                card/toolbar/chat DOM controller
-docs/                   these docs
+js/agent.js                local-model chat (Ollama)
+js/agent.config.js         local-model settings (no secret, committed)
+js/agent.local.js          machine override: model + baseUrl (GITIGNORED)
+js/editor.js               add/edit/delete memories
+js/ui.js                   card/toolbar/chat/link-picker DOM controller
+docs/                      these docs
 ```
 
 ## Secrets — do not leak
 
 - `js/voice.local.js` holds George's ElevenLabs API key. It is gitignored. **Never
   commit it, never print its contents, never inline the key anywhere committed.**
-- `data/memories.local.json` is his real personal history. Gitignored. Same deal —
-  it never goes to GitHub and its contents stay private.
-- Before any commit, run `git status` and confirm neither appears. The public seed
-  (`data/memories.json`) is the only memory data that ships.
+- `data/memories.local.json` is his real personal history (built from his private
+  neural map — trauma, the doctrine, etc). Gitignored. It NEVER goes to GitHub and
+  its contents stay private. Do not echo it.
+- `js/agent.local.js` holds his local-model override. Gitignored. Not a secret, but
+  it stays local.
+- Before any commit, run `git status` and confirm NO `*.local.*` file appears. The
+  public seed (`data/memories.json`) is the only memory data that ships.
 
 ## Conventions you must keep
 
@@ -99,20 +104,40 @@ Set in `js/interaction.js`. If you change it, update this list.
   shorter than `TAP_MS` with no drag = **select** (open + read)
 - **two fingers** (index + middle V / `Victory`) on an orb → expand: card + read
 - **open palm** + move → orbit the whole world group (`_orbit`)
-- **two hands** → navigate: spread/close = zoom, move = orbit, twist = roll (`_twoHandNav`).
-  Single-hand node manipulation is suspended while two hands are up.
+- **two hands** → navigate: spread/close = zoom, move together = orbit, twist = roll
+  (`_twoHandNav`). Single-hand node manipulation is suspended while two hands are up.
 - thresholds in interaction.js: `TWO_FINGER_SPREAD` ~0.11, `TAP_MS` ~260,
-  `BRUSH_RADIUS/PUSH/KNOCK`, `ORBIT_K`, `ZOOM_K`. Readout shows `pinch`/`spread` for tuning.
+  `BRUSH_RADIUS/PUSH/KNOCK`, `ORBIT_K` (single-hand), `ZOOM_K`, `NAV_ORBIT_K`
+  (two-hand). Readout shows `pinch` / `spread` per hand for tuning.
+
+## Layout model (graph.js)
+
+Not a random cloud — it's structured:
+- the **persona/subject node is pinned at the origin** (`Graph.center`) as the radial anchor
+- **each category gets its own sector on the sphere** (`categoryAnchors`, fibonacci
+  spread); nodes are pulled to their category zone, so like groups with like
+- links (springs) + repulsion shape detail inside a group; grab/brush shoves a node,
+  the sim re-settles it. Nodes live inside a faint wireframe **force sphere** (scene.js).
+- tuning: `GROUP_RADIUS`, `GROUP_K`, `REPULSION`, `SPRING_K` in graph.js
 
 ## Current state (as of this handoff)
 
 - Phases A–E complete and syntax-clean (`node --check --input-type=module` on each
   `js/*.js` passes).
-- Interaction is pinch-to-drag / open-to-expand. TTS is locked to once-per-selection
-  (`Narrator.speaking`); deliberate plays pass `{ force:true }`.
-- Editor has a searchable link picker (chips + dropdown) that draws edges.
-- Phase F (the face) not started.
-- Known rough edges are listed at the bottom of `CODEPLAN.md`.
+- **Interaction:** pinch = grab/drag, quick pinch-tap = select, two-finger V = expand,
+  fingertip **brushes/knocks** orbs it passes, open palm = orbit, **two hands = zoom +
+  rotate + roll**.
+- **Layout:** structured — persona pinned centre, categories grouped into sphere
+  sectors, inside a wireframe force sphere. Per-category node colours.
+- **Voice:** TTS locked to once-per-selection (`Narrator.speaking`); deliberate plays
+  pass `{ force:true }`. Cloned voice via `voice.local.js` if present.
+- **Editor:** add/edit/delete + searchable link picker (chips + dropdown) that draws edges.
+- **Local model:** chat per memory via Ollama (`agent.js` / `agent.config.js`).
+- **Data:** public seed ships safe milestones only; George's real graph (neural map,
+  PALADIN excluded) lives in the gitignored `memories.local.json`.
+- **Phase F (the watching face) NOT started** — that's the next job.
+- Known rough edges are at the bottom of `CODEPLAN.md` (two-hand index swap, O(n²)
+  repulsion, client-side EL key).
 
 ## If you're continuing the work
 

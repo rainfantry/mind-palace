@@ -28,11 +28,12 @@ Open **http://localhost:8000** in Chrome/Edge and allow the camera.
 
 | Do this | Get this |
 |---------|----------|
-| **Point** (index finger) | a crosshair tracks your fingertip |
-| **Pinch + hold** (thumb + index) on an orb | grab it and drag — linked orbs follow on elastic |
-| **Two fingers** (index + middle, a V) on an orb | expand it: card opens + read aloud |
-| **Two hands** | two independent cursors — drag two clusters at once |
-| **Mouse fallback** | no camera? move = point, hold left-click = pinch, right-click = open |
+| **Point** (index finger) | crosshair tracks your fingertip — and **brushes / knocks** orbs it passes through, like a physics object |
+| **Pinch + hold** (thumb + index) | grab and drag an orb (linked cluster follows). A quick **pinch-tap** selects it: card + read |
+| **Two fingers** (index + middle V) | expand it: card opens + read aloud |
+| **Open palm** + move | orbit the whole force-sphere of nodes |
+| **Two hands** spread / close | zoom the view in / out |
+| **Mouse fallback** | move = point, hold-left = drag, quick-click = select, right-click = open |
 
 Bottom-right is a **live detection readout** — per hand it shows handedness,
 gesture, pinch distance, fingertip coords and what it's doing. That's your window

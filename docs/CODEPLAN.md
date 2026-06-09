@@ -14,7 +14,10 @@ for last on purpose.
 ### Phase B — two hands + gestures ✅
 - swapped HandLandmarker → GestureRecognizer (fist, open palm, point, …)
 - two-hand tracking = multi-select
-- gesture model: **pinch (thumb+index) = grab/drag**, **two-finger V (index+middle) = expand + read**
+- gesture model: **pinch = grab/drag** (quick pinch-tap = select), **two-finger V = expand**,
+  **open palm = orbit**, **two hands = zoom**
+- the fingertip **brushes/knocks** orbs it passes (physics impulse)
+- nodes live inside a faint **force sphere**; extended tag colours for the neural-map categories
 - bottom-right live detection readout
 
 ### Phase C — the cloned voice ✅

@@ -12,9 +12,18 @@
 import * as THREE from "three";
 
 const TAG_COLOURS = {
-  milestone: 0xffd166, // gold
-  build:     0x4fd1ff, // cyan
-  default:   0x9aa7b0,
+  // the wins
+  milestone:   0xffd166, // gold
+  build:       0x4fd1ff, // cyan
+  // the map (neural-net categories)
+  corruption:  0xff5c5c, // red — the damage
+  trauma:      0xc0392b, // deep red — the origins
+  defense:     0x9b6dff, // violet — the armour
+  framework:   0x2ec6c0, // teal — the doctrine / tools
+  operational: 0xffa64f, // orange — the working systems
+  identity:    0xd98cff, // mauve
+  persona:     0xffffff, // white — the subject
+  default:     0x9aa7b0,
 };
 
 export class MemorySwarm {

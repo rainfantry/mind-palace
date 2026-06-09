@@ -37,6 +37,10 @@ export class Stage {
     this.world = new THREE.Group();
     this.scene.add(this.world);
 
+    // The force sphere — a faint wireframe shell the nodes live inside. Spins with
+    // the world, so when you open-palm-orbit you can see the whole thing turning.
+    this._addForceSphere();
+
     // Resize handling — keep it from stretching when the window changes.
     window.addEventListener("resize", () => this._onResize());
 
@@ -66,6 +70,15 @@ export class Stage {
     geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
     const mat = new THREE.PointsMaterial({ color: 0x335566, size: 0.4, transparent: true, opacity: 0.6 });
     this.scene.add(new THREE.Points(geo, mat));
+  }
+
+  // A faint wireframe sphere the nodes float inside — the "force sphere".
+  _addForceSphere() {
+    const geo = new THREE.SphereGeometry(16, 24, 16);
+    const mat = new THREE.MeshBasicMaterial({
+      color: 0x2a6f8b, wireframe: true, transparent: true, opacity: 0.06,
+    });
+    this.world.add(new THREE.Mesh(geo, mat));
   }
 
   _onResize() {

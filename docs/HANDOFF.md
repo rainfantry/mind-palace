@@ -93,14 +93,15 @@ docs/                   these docs
 ## Gesture model (current)
 
 Set in `js/interaction.js`. If you change it, update this list.
-- **point** (index out) → crosshair tracks the fingertip
-- **pinch + hold** (thumb + index) over an orb → grab + drag it (pinned; cluster follows)
-- **two fingers** (index + middle V / `Victory` gesture) on an orb → expand: card + read
-- two hands = two independent cursors
-- pinch and the two-finger open are on different finger pairs so they never clash
-- thresholds: `PINCH_THRESHOLD` (hands.js, ~0.06) for pinch, `TWO_FINGER_SPREAD`
-  (interaction.js, ~0.11) for the index↔middle open. Both fed by per-hand values in
-  the readout (`pinch` / `spread`) for tuning.
+- **point** (index out) → crosshair tracks the fingertip AND brushes/knocks orbs it
+  passes (physics impulse from `_brush`, see `BRUSH_*` consts in interaction.js)
+- **pinch + hold** (thumb + index) → grab + drag (pinned; cluster follows). A pinch
+  shorter than `TAP_MS` with no drag = **select** (open + read)
+- **two fingers** (index + middle V / `Victory`) on an orb → expand: card + read
+- **open palm** + move → orbit the whole world group (`_orbit`)
+- **two hands** spread/close → zoom the camera (`_handleZoom`)
+- thresholds in interaction.js: `TWO_FINGER_SPREAD` ~0.11, `TAP_MS` ~260,
+  `BRUSH_RADIUS/PUSH/KNOCK`, `ORBIT_K`, `ZOOM_K`. Readout shows `pinch`/`spread` for tuning.
 
 ## Current state (as of this handoff)
 

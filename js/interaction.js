@@ -1,28 +1,34 @@
 // ---------------------------------------------------------------------------
-// interaction.js — where hands meet memories. Multi-hand + gesture aware, and
-// plugged into the force graph.
+// interaction.js — where hands meet memories. Multi-hand, gesture aware, with a
+// physics brush and a navigation mode.
 //
-// GESTURE MODEL:
-//   - point (open hand, index out)  -> a crosshair tracks your fingertip
-//   - PINCH and hold over an orb     -> grab it; while pinched, drag it. The orb
-//                                       is pinned, so its linked cluster gets
-//                                       dragged along on elastic. Release = drop.
-//   - TWO FINGERS (index + middle, a V / Victory) on an orb -> EXPAND it: open the
-//                                       memory card and read it aloud.
-//
-// Pinch (thumb+index) and the two-finger V (index+middle) use different fingers,
-// so drag and open never get confused. Two hands work independently.
-// Bottom-right readout shows what each hand is doing.
+// GESTURE MODEL (per hand):
+//   - point (index out)            -> crosshair tracks your fingertip; moving it
+//                                     through orbs BRUSHES them — knocks them like
+//                                     a physics object as the finger passes.
+//   - PINCH (thumb+index)          -> grab + drag an orb. A quick pinch-tap (no
+//                                     drag) SELECTS it: opens the card + reads it.
+//   - TWO FINGERS (index+middle V) -> also expand/read (the deliberate open).
+//   - OPEN PALM (all fingers)      -> NAVIGATE: move the open hand to orbit the
+//                                     whole force-sphere of nodes.
+//   - TWO HANDS                    -> spread/close them to ZOOM the view.
 // ---------------------------------------------------------------------------
 
 import * as THREE from "three";
 
-// Index↔middle fingertip gap past this counts as a "two-finger open" (the Victory
-// gesture also triggers it). Tune with the `spread` value in the readout.
-const TWO_FINGER_SPREAD = 0.11;
-
-// Don't let an expand re-fire faster than this.
+const TWO_FINGER_SPREAD = 0.11;   // index↔middle gap that counts as "open"
 const EXPAND_DEBOUNCE_MS = 700;
+const TAP_MS = 260;               // pinch shorter than this = a select-tap, not a drag
+
+// brush / knock physics
+const BRUSH_RADIUS = 3.0;
+const BRUSH_PUSH = 0.5;           // radial shove away from the fingertip
+const BRUSH_KNOCK = 6.0;          // how much of the finger's motion transfers
+
+// navigation
+const ORBIT_K = 1.6;              // open-palm orbit sensitivity
+const ZOOM_K = 34;                // two-hand zoom sensitivity
+const ZOOM_MIN = 8, ZOOM_MAX = 70;
 
 export class Interaction {
   constructor(stage, swarm, narrator, ui) {
@@ -34,6 +40,7 @@ export class Interaction {
     this.raycaster = new THREE.Raycaster();
     this.pointer = new THREE.Vector2();
     this.handStates = [];
+    this.lastZoomSpan = null;   // distance between two hands last frame
   }
 
   _stateFor(i) {
@@ -43,8 +50,8 @@ export class Interaction {
     crosshair.style.opacity = "0";
     document.body.appendChild(crosshair);
     const state = {
-      crosshair, grabbed: null, hovered: null,
-      wasPinching: false, lastExpand: 0,
+      crosshair, grabbed: null, hovered: null, wasPinching: false,
+      grabStart: 0, lastExpand: 0, navLast: null, brushPrev: null, mode: "—",
     };
     this.handStates[i] = state;
     return state;
@@ -52,6 +59,8 @@ export class Interaction {
 
   update(frame) {
     const hands = frame.hands || [];
+
+    this._handleZoom(hands);
     hands.forEach((hand, i) => this._processHand(this._stateFor(i), hand));
 
     for (let i = hands.length; i < this.handStates.length; i++) {
@@ -60,8 +69,25 @@ export class Interaction {
       s.crosshair.style.opacity = "0";
       this._release(s);
       this._setHover(s, null);
+      s.navLast = null; s.brushPrev = null;
     }
     this._renderHud(hands);
+  }
+
+  // Two hands present → use the gap between them as a zoom dial.
+  _handleZoom(hands) {
+    if (hands.length === 2) {
+      const a = hands[0].cursor, b = hands[1].cursor;
+      const span = Math.hypot(a.x - b.x, a.y - b.y);
+      if (this.lastZoomSpan != null) {
+        const delta = span - this.lastZoomSpan;       // spread apart = zoom in
+        const cam = this.stage.camera;
+        cam.position.z = THREE.MathUtils.clamp(cam.position.z - delta * ZOOM_K, ZOOM_MIN, ZOOM_MAX);
+      }
+      this.lastZoomSpan = span;
+    } else {
+      this.lastZoomSpan = null;
+    }
   }
 
   _processHand(state, hand) {
@@ -71,31 +97,45 @@ export class Interaction {
     this._moveCrosshair(state, cursor, pinch);
     this.pointer.set(cursor.x, cursor.y);
 
+    // ---- OPEN PALM = navigate (orbit the sphere) ----
+    if (gesture === "Open_Palm") {
+      this._release(state);
+      this._orbit(state, cursor);
+      this._setHover(state, null);
+      state.brushPrev = null;
+      state.mode = "navigate";
+      state.wasPinching = pinch;
+      return;
+    }
+    state.navLast = null;
+
     const hit = this._raycastOrb();
     const justPinched = pinch && !state.wasPinching;
+    const justReleased = !pinch && state.wasPinching;
 
-    // ---- PINCH (thumb+index) = grab + drag ----
-    if (justPinched && hit) this._grab(state, hit);
-    if (state.grabbed) {
-      if (pinch) {
-        this._dragOrb(state.grabbed);   // still pinched: drag it
-      } else {
-        this._release(state);           // let go: drop it
-      }
+    // ---- PINCH = grab + drag, quick tap = select ----
+    if (justPinched && hit) this._grab(state, hit, now);
+    if (state.grabbed && pinch) this._dragOrb(state.grabbed);
+    if (justReleased && state.grabbed) {
+      const held = now - state.grabStart;
+      const orb = state.grabbed;
+      this._release(state);
+      if (held < TAP_MS) this._open(orb);   // pinch-to-select fallback
     }
 
-    // ---- TWO FINGERS (index+middle V) = expand + read ----
+    // ---- TWO FINGERS (V) = expand/read ----
     const twoFingerOpen = gesture === "Victory" || spreadDist >= TWO_FINGER_SPREAD;
     if (twoFingerOpen && (now - state.lastExpand > EXPAND_DEBOUNCE_MS)) {
       const target = state.grabbed || hit;
-      if (target) {
-        this._expand(state, target);
-        state.lastExpand = now;
-      }
+      if (target) { this._open(target); state.lastExpand = now; }
     }
 
-    // hover highlight
+    // ---- BRUSH: finger pushes nodes it passes through ----
+    if (!state.grabbed && !pinch) this._brush(state);
+    else state.brushPrev = null;
+
     this._setHover(state, state.grabbed || hit);
+    state.mode = state.grabbed ? "drag" : (hit ? "hover" : "point");
     state.wasPinching = pinch;
   }
 
@@ -111,6 +151,45 @@ export class Interaction {
     this.raycaster.setFromCamera(this.pointer, this.stage.camera);
     const hits = this.raycaster.intersectObjects(this.swarm.orbs, false);
     return hits.length > 0 ? hits[0].object : null;
+  }
+
+  // A point in the node field under the cursor (on the plane through the origin).
+  _cursorWorldPoint() {
+    this.raycaster.setFromCamera(this.pointer, this.stage.camera);
+    const dist = this.stage.camera.position.length(); // camera looks at origin
+    const p = this.raycaster.ray.origin.clone().addScaledVector(this.raycaster.ray.direction, dist);
+    this.stage.world.worldToLocal(p);
+    return p;
+  }
+
+  // Knock nearby orbs as the fingertip moves past them.
+  _brush(state) {
+    const p = this._cursorWorldPoint();
+    const vel = state.brushPrev ? p.clone().sub(state.brushPrev) : new THREE.Vector3();
+    state.brushPrev = p.clone();
+
+    for (const orb of this.swarm.orbs) {
+      if (orb.userData.pinned) continue;
+      const d = orb.position.distanceTo(p);
+      if (d >= BRUSH_RADIUS) continue;
+      const strength = 1 - d / BRUSH_RADIUS;
+      const push = orb.position.clone().sub(p).normalize();
+      orb.userData.velocity.addScaledVector(push, strength * BRUSH_PUSH);   // shove out of the way
+      orb.userData.velocity.addScaledVector(vel, strength * BRUSH_KNOCK);   // carry the finger's motion
+    }
+  }
+
+  // Open palm drag = orbit the whole world group.
+  _orbit(state, cursor) {
+    if (state.navLast) {
+      const dx = cursor.x - state.navLast.x;
+      const dy = cursor.y - state.navLast.y;
+      this.stage.world.rotation.y += dx * ORBIT_K;
+      this.stage.world.rotation.x = THREE.MathUtils.clamp(
+        this.stage.world.rotation.x - dy * ORBIT_K, -1.2, 1.2
+      );
+    }
+    state.navLast = { ...cursor };
   }
 
   _setHover(state, orb) {
@@ -130,10 +209,11 @@ export class Interaction {
     return this.handStates.some((s) => s && s !== self && (s.grabbed === orb || s.hovered === orb));
   }
 
-  _grab(state, orb) {
+  _grab(state, orb, now) {
     if (this.handStates.some((s) => s && s !== state && s.grabbed === orb)) return;
     state.grabbed = orb;
-    orb.userData.pinned = true;       // force sim leaves it where the finger puts it
+    state.grabStart = now;
+    orb.userData.pinned = true;
     orb.userData.baseScale = 1.4;
   }
 
@@ -159,15 +239,11 @@ export class Interaction {
     }
   }
 
-  // Open the memory card + read it. Also a quick visual pop so the expand reads.
-  _expand(state, orb) {
-    if (state.grabbed) this._release(state); // opening your hand drops the grab
+  // Open a memory: card + read aloud + a brightness pop.
+  _open(orb) {
+    if (!orb) return;
     orb.material.emissiveIntensity = 2.0;
-    this._openMemory(orb.userData.memory);
-  }
-
-  _openMemory(memory) {
-    if (!memory) return;
+    const memory = orb.userData.memory;
     this.ui.showCard(memory);
     this.narrator.speak(`${memory.title}. ${memory.body}`); // guarded: once per loop
   }
@@ -177,16 +253,16 @@ export class Interaction {
       this.ui.setHud("no hands detected\n(point at the camera)");
       return;
     }
-    const lines = [`hands: ${hands.length}`];
+    const zoom = hands.length === 2 ? "  [ZOOM]" : "";
+    const lines = [`hands: ${hands.length}${zoom}`];
     hands.forEach((h, i) => {
       const s = this.handStates[i];
-      const doing = s?.grabbed ? "dragging" : (s?.hovered ? "hovering" : "—");
       const title = s?.grabbed?.userData?.memory?.title ?? s?.hovered?.userData?.memory?.title ?? "";
       lines.push(
         `H${i} ${h.handedness.padEnd(5)} ${h.gesture}`,
         `   pinch ${h.pinchDist.toFixed(2)} ${h.pinch ? "●drag" : "○"}  spread ${(h.spreadDist ?? 0).toFixed(2)}`,
         `   x ${h.cursor.x.toFixed(2)}  y ${h.cursor.y.toFixed(2)}`,
-        `   → ${doing}${title ? ": " + title : ""}`
+        `   → ${s?.mode ?? "—"}${title ? ": " + title : ""}`
       );
     });
     this.ui.setHud(lines.join("\n"));

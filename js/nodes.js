@@ -1,62 +1,30 @@
 // ---------------------------------------------------------------------------
-// nodes.js — turn memory data into floating 3D objects.
+// nodes.js — turn memory data into floating orbs.
 //
-// Takes the array of memories and builds a glowing orb for each one, laid out
-// on a slow helix so it reads like a timeline spiralling up through the dark.
-// Each orb remembers which memory it is (orb.userData.memory) so when you grab
-// it, we know what to open.
+// Builds a glowing orb + floating label per memory. Positions are just a STARTING
+// spread (a helix) — once it's running, graph.js's force sim takes over and moves
+// them around based on their links. So this file only cares about MAKING orbs,
+// not where they end up.
 //
-// Want a different layout later? Rip out buildHelix and write your own. Nothing
-// else cares HOW they're positioned, only that they end up in stage.world.
+// Exposes addNode / removeNode so the editor can grow and prune the graph live.
 // ---------------------------------------------------------------------------
 
 import * as THREE from "three";
 
-// Colour an orb by its tag so milestones and builds read differently at a glance.
 const TAG_COLOURS = {
-  milestone: 0xffd166, // gold — the big rocks
-  build:     0x4fd1ff, // cyan — the things you made
+  milestone: 0xffd166, // gold
+  build:     0x4fd1ff, // cyan
   default:   0x9aa7b0,
 };
 
 export class MemorySwarm {
   constructor(stage) {
     this.stage = stage;
-    this.orbs = []; // every clickable orb, for the raycaster
-  }
+    this.orbs = [];
 
-  // Build the whole swarm from the memory list.
-  build(memories) {
-    const layout = this._buildHelix(memories.length);
-
-    memories.forEach((memory, i) => {
-      const colour = TAG_COLOURS[memory.tag] || TAG_COLOURS.default;
-      const orb = this._makeOrb(colour);
-
-      orb.position.copy(layout[i]);
-
-      // Stash the data on the object. This is the bit that matters — the orb
-      // carries its memory around with it.
-      orb.userData.memory = memory;
-      orb.userData.homePosition = layout[i].clone(); // so it can drift back after you let go
-      orb.userData.baseScale = 1;
-
-      this.stage.world.add(orb);
-      this.orbs.push(orb);
-
-      // Floating text label above each orb so you can read the title without
-      // opening it.
-      const label = this._makeLabel(memory.title);
-      label.position.copy(layout[i]).add(new THREE.Vector3(0, 1.6, 0));
-      this.stage.world.add(label);
-      orb.userData.label = label;
-    });
-
-    // Slow auto-rotate of the whole swarm so it feels alive. Stops feeling like
-    // a screensaver the moment you reach in and grab something.
-    this.stage.onTick((dt) => {
-      this.stage.world.rotation.y += dt * 0.04;
-      // gently breathe the orbs so they're never totally static
+    // Subtle breathing so nothing's ever totally dead. Scale only — positions
+    // belong to the force sim now.
+    this.stage.onTick(() => {
       const t = performance.now() * 0.001;
       this.orbs.forEach((orb, i) => {
         const pulse = 1 + Math.sin(t * 1.5 + i) * 0.04;
@@ -65,29 +33,75 @@ export class MemorySwarm {
     });
   }
 
-  // A single glowing memory orb.
+  build(memories) {
+    const layout = this._buildHelix(memories.length);
+    memories.forEach((memory, i) => this._spawn(memory, layout[i]));
+  }
+
+  // Make one orb from a memory and drop it in the world.
+  _spawn(memory, startPos) {
+    const colour = TAG_COLOURS[memory.tag] || TAG_COLOURS.default;
+    const orb = this._makeOrb(colour);
+    orb.position.copy(startPos || new THREE.Vector3(
+      (Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6
+    ));
+
+    orb.userData.memory = memory;
+    orb.userData.baseScale = 1;
+    orb.userData.velocity = new THREE.Vector3();  // for the force sim
+    orb.userData.pinned = false;                  // true while a finger holds it
+
+    const label = this._makeLabel(memory.title);
+    label.position.copy(orb.position).add(new THREE.Vector3(0, 1.6, 0));
+    orb.userData.label = label;
+
+    this.stage.world.add(orb);
+    this.stage.world.add(label);
+    this.orbs.push(orb);
+    return orb;
+  }
+
+  // EDITOR HOOK: add a brand-new node at runtime.
+  addNode(memory) {
+    return this._spawn(memory, null);
+  }
+
+  // EDITOR HOOK: remove a node by id, tidy up its three.js objects.
+  removeNode(id) {
+    const idx = this.orbs.findIndex((o) => o.userData.memory.id === id);
+    if (idx === -1) return false;
+    const orb = this.orbs[idx];
+    this.stage.world.remove(orb);
+    if (orb.userData.label) this.stage.world.remove(orb.userData.label);
+    this.orbs.splice(idx, 1);
+    return true;
+  }
+
+  // EDITOR HOOK: a node's text changed — redraw its label.
+  refreshLabel(orb) {
+    if (!orb.userData.label) return;
+    this.stage.world.remove(orb.userData.label);
+    const label = this._makeLabel(orb.userData.memory.title);
+    label.position.copy(orb.position).add(new THREE.Vector3(0, 1.6, 0));
+    orb.userData.label = label;
+    this.stage.world.add(label);
+  }
+
   _makeOrb(colour) {
     const geo = new THREE.IcosahedronGeometry(0.9, 2);
     const mat = new THREE.MeshStandardMaterial({
-      color: colour,
-      emissive: colour,
-      emissiveIntensity: 0.6,
-      roughness: 0.35,
-      metalness: 0.1,
+      color: colour, emissive: colour, emissiveIntensity: 0.6,
+      roughness: 0.35, metalness: 0.1,
     });
     const orb = new THREE.Mesh(geo, mat);
-
-    // A faint outer shell for the glow halo.
     const halo = new THREE.Mesh(
       new THREE.IcosahedronGeometry(1.15, 1),
       new THREE.MeshBasicMaterial({ color: colour, transparent: true, opacity: 0.12 })
     );
     orb.add(halo);
-
     return orb;
   }
 
-  // Build a canvas-texture label. Cheap, readable, good enough.
   _makeLabel(text) {
     const canvas = document.createElement("canvas");
     canvas.width = 512; canvas.height = 128;
@@ -96,26 +110,24 @@ export class MemorySwarm {
     ctx.font = "bold 40px Consolas, monospace";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(text.slice(0, 28), 256, 64); // clip long titles so they don't blow out
-
+    ctx.fillText(String(text || "").slice(0, 28), 256, 64);
     const tex = new THREE.CanvasTexture(canvas);
     const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
     sprite.scale.set(5, 1.25, 1);
     return sprite;
   }
 
-  // Lay n points on a vertical helix. Reads bottom-to-top as oldest-to-newest.
   _buildHelix(n) {
     const points = [];
     const radius = 9;
-    const turns = 2.2;            // how many times it wraps around
+    const turns = 2.2;
     const height = Math.max(n, 1) * 2.2;
     for (let i = 0; i < n; i++) {
       const t = n > 1 ? i / (n - 1) : 0;
       const angle = t * turns * Math.PI * 2;
       points.push(new THREE.Vector3(
         Math.cos(angle) * radius,
-        (t - 0.5) * height,   // centre the column on y=0
+        (t - 0.5) * height,
         Math.sin(angle) * radius
       ));
     }

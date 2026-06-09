@@ -84,12 +84,35 @@ Everything else does exactly one job and says what it does at the top:
 | `js/voice.js` | reads a memory out loud |
 | `js/ui.js` | the side card + status line |
 
+## The network, the editor, the talk
+
+- **It's a graph now.** Memories have `links` and float as a connected web —
+  edges drawn as glowing lines, laid out by a force sim. Grab one orb and its
+  linked cluster gets dragged along on elastic.
+- **Edit with the mouse.** `＋ memory` (top-left) adds a node; open any memory and
+  hit `✎ edit` to change its title/body/tag/links; `⤓ export` copies the whole lot
+  as JSON for `data/memories.local.json`. Edits save to your browser automatically.
+- **Talk to it.** Open a memory, hit `💬 talk`, and chat to your **local model**
+  (Ollama, qwen-code) about it — replies come back in your cloned voice. Settings
+  in `js/agent.config.js`. Heads-up: start Ollama with `OLLAMA_ORIGINS=*` or the
+  browser gets blocked.
+
+## Docs
+
+- `docs/ARCHITECTURE.md` — how it's built and why
+- `docs/CODEPLAN.md` — build phases + what's next (the 3D face is Phase F)
+- `docs/HANDOFF.md` — pick-up guide for an AI agent / a different model
+
 ## Where it's going
 
-- [x] **Cloned voice wired in.** Put your ElevenLabs key + voice ID in `js/voice.local.js` (gitignored — copy `js/voice.local.example.js`). With it, memories are read in your real voice; without it, browser voice. That file is the *only* place a key lives, and it never gets committed.
-- [ ] Lay the orbs out by **meaning** instead of just date — embed the memories and cluster the related ones together.
-- [ ] Two-handed gestures — zoom, rotate the whole swarm.
-- [ ] Point it at **survey data** — same interface, but you're grabbing a 3D site model instead of a memory. That's the one that matters.
+- [x] **Cloned voice** — `js/voice.local.js` (gitignored).
+- [x] **The network** — links, edges, force-directed drag.
+- [x] **Mouse editor** — add/edit/delete/export memories.
+- [x] **Local model chat** — talk to qwen-code about a memory.
+- [ ] **The watching face (Phase F)** — a 3D model of my face that looks toward my
+  fingers. The hefty one, saved for last. See `docs/CODEPLAN.md`.
+- [ ] Lay orbs out by **meaning** (embeddings) instead of date.
+- [ ] Point it at **survey data** — same interface, real 3D site model. The one that pays.
 
 ## Stack
 

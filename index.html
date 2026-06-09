@@ -38,13 +38,60 @@
        loading, camera on, hand seen, mouse fallback, whatever. -->
   <div id="status">booting…</div>
 
-  <!-- The panel that slides in when you grab a memory and open it. -->
+  <!-- Top-left toolbar (mouse-driven). -->
+  <div id="toolbar">
+    <button id="tb-add" title="add a new memory">＋ memory</button>
+    <button id="tb-export" title="copy all memories as JSON">⤓ export</button>
+  </div>
+
+  <!-- The panel that slides in when you open a memory. Three modes: view / edit / talk. -->
   <div id="memory-card" class="hidden">
     <button id="card-close" title="shut it">✕</button>
-    <div id="card-date"></div>
-    <h2 id="card-title"></h2>
-    <p id="card-body"></p>
-    <button id="card-speak">▶ read it to me</button>
+
+    <!-- VIEW -->
+    <div id="card-view">
+      <div id="card-date"></div>
+      <h2 id="card-title"></h2>
+      <p id="card-body"></p>
+      <div class="card-actions">
+        <button id="card-speak">▶ read</button>
+        <button id="card-edit">✎ edit</button>
+        <button id="card-talk">💬 talk</button>
+      </div>
+    </div>
+
+    <!-- EDIT (mouse) -->
+    <div id="card-edit-form" class="hidden">
+      <label>title <input id="edit-title" type="text" /></label>
+      <label>date <input id="edit-date" type="text" placeholder="YYYY-MM" /></label>
+      <label>tag
+        <select id="edit-tag">
+          <option value="build">build</option>
+          <option value="milestone">milestone</option>
+        </select>
+      </label>
+      <label>body (this is what gets read aloud)
+        <textarea id="edit-body" rows="5"></textarea>
+      </label>
+      <label>links — comma-separated node ids
+        <input id="edit-links" type="text" placeholder="servitor, voice-clone" />
+      </label>
+      <div class="card-actions">
+        <button id="edit-save">save</button>
+        <button id="edit-delete" class="danger">delete</button>
+        <button id="edit-cancel">cancel</button>
+      </div>
+    </div>
+
+    <!-- TALK (local model) -->
+    <div id="card-chat" class="hidden">
+      <div id="chat-log"></div>
+      <div class="chat-row">
+        <input id="chat-input" type="text" placeholder="ask servitor about this memory…" />
+        <button id="chat-send">send</button>
+      </div>
+      <div id="chat-model"></div>
+    </div>
   </div>
 
   <!-- Crosshairs are spawned per-hand in interaction.js (up to two), so you can

@@ -1,53 +1,196 @@
 // ---------------------------------------------------------------------------
-// ui.js — the memory card panel and the status line.
+// ui.js — the panel controller. Owns the memory card (view / edit / talk),
+// the toolbar, the status line and the detection readout.
 //
-// Plain DOM, no framework. It just shows/hides the card and fills it in. Kept
-// separate from interaction.js so the 3D logic doesn't get tangled up with
-// button wiring.
+// It's the one file allowed to touch a lot of DOM. Logic lives elsewhere:
+//   - reading aloud -> narrator (voice.js)
+//   - add/edit/delete -> editor (editor.js)
+//   - talk -> agent (agent.js)
+// This just wires buttons to those.
+//
+// main.js builds the dependencies then calls ui.attach({ agent, editor, swarm }).
 // ---------------------------------------------------------------------------
 
 export class UI {
   constructor(narrator) {
     this.narrator = narrator;
+    this.agent = null;
+    this.editor = null;
+    this.swarm = null;
 
+    this.currentMemory = null;
+    this.currentOrb = null;
+
+    // static elements (exist from page load)
+    this.statusEl = document.getElementById("status");
+    this.hudEl = document.getElementById("hud");
     this.card = document.getElementById("memory-card");
+
+    this.viewEl = document.getElementById("card-view");
+    this.editEl = document.getElementById("card-edit-form");
+    this.chatEl = document.getElementById("card-chat");
+
     this.cardDate = document.getElementById("card-date");
     this.cardTitle = document.getElementById("card-title");
     this.cardBody = document.getElementById("card-body");
-    this.statusEl = document.getElementById("status");
-    this.hudEl = document.getElementById("hud");
 
-    this.current = null; // the memory currently shown
-
-    // Wire the card buttons once.
     document.getElementById("card-close").addEventListener("click", () => this.hideCard());
-    document.getElementById("card-speak").addEventListener("click", () => {
-      if (this.current) this.narrator.speak(`${this.current.title}. ${this.current.body}`);
+    document.getElementById("card-speak").addEventListener("click", () => this._speakCurrent());
+    document.getElementById("card-edit").addEventListener("click", () => this._showMode("edit"));
+    document.getElementById("card-talk").addEventListener("click", () => this._showMode("chat"));
+  }
+
+  setStatus(text) { if (this.statusEl) this.statusEl.textContent = text; }
+  setHud(text) { if (this.hudEl) this.hudEl.textContent = text; }
+
+  // Called by main once the deps exist. Wires the buttons that need them.
+  attach({ agent, editor, swarm }) {
+    this.agent = agent;
+    this.editor = editor;
+    this.swarm = swarm;
+
+    document.getElementById("tb-add").addEventListener("click", () => this._addMemory());
+    document.getElementById("tb-export").addEventListener("click", () => this._export());
+
+    document.getElementById("edit-save").addEventListener("click", () => this._saveEdit());
+    document.getElementById("edit-delete").addEventListener("click", () => this._deleteCurrent());
+    document.getElementById("edit-cancel").addEventListener("click", () => this._showMode("view"));
+
+    document.getElementById("chat-send").addEventListener("click", () => this._sendChat());
+    document.getElementById("chat-input").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") this._sendChat();
     });
+
+    const modelEl = document.getElementById("chat-model");
+    if (modelEl) modelEl.textContent = this.agent?.enabled ? `model: ${this.agent.modelName}` : "local model off";
   }
 
-  // Bottom-left status text.
-  setStatus(text) {
-    if (this.statusEl) this.statusEl.textContent = text;
-  }
+  // ---- open / show ----------------------------------------------------------
 
-  // Bottom-right live detection readout (driven by interaction.js every frame).
-  setHud(text) {
-    if (this.hudEl) this.hudEl.textContent = text;
-  }
-
-  // Show a memory in the side card.
   showCard(memory) {
-    this.current = memory;
+    this.currentMemory = memory;
+    this.currentOrb = this.swarm
+      ? this.swarm.orbs.find((o) => o.userData.memory.id === memory.id)
+      : null;
+
     this.cardDate.textContent = memory.date || "";
     this.cardTitle.textContent = memory.title || "";
     this.cardBody.textContent = memory.body || "";
+
     this.card.classList.remove("hidden");
+    this._showMode("view");
   }
 
   hideCard() {
     this.card.classList.add("hidden");
     this.narrator.shutUp();
-    this.current = null;
+    this.currentMemory = null;
+    this.currentOrb = null;
+  }
+
+  // Swap between view / edit / chat sections.
+  _showMode(mode) {
+    this.viewEl.classList.toggle("hidden", mode !== "view");
+    this.editEl.classList.toggle("hidden", mode !== "edit");
+    this.chatEl.classList.toggle("hidden", mode !== "chat");
+    if (mode === "edit") this._populateEdit();
+    if (mode === "chat") document.getElementById("chat-input")?.focus();
+  }
+
+  _speakCurrent() {
+    if (this.currentMemory) {
+      this.narrator.speak(`${this.currentMemory.title}. ${this.currentMemory.body}`);
+    }
+  }
+
+  // ---- edit -----------------------------------------------------------------
+
+  _populateEdit() {
+    const m = this.currentMemory;
+    if (!m) return;
+    document.getElementById("edit-title").value = m.title || "";
+    document.getElementById("edit-date").value = m.date || "";
+    document.getElementById("edit-tag").value = m.tag || "build";
+    document.getElementById("edit-body").value = m.body || "";
+    document.getElementById("edit-links").value = (m.links || []).join(", ");
+  }
+
+  _saveEdit() {
+    if (!this.currentOrb || !this.editor) return;
+    const links = document.getElementById("edit-links").value
+      .split(",").map((s) => s.trim()).filter(Boolean);
+    const fields = {
+      title: document.getElementById("edit-title").value.trim(),
+      date: document.getElementById("edit-date").value.trim(),
+      tag: document.getElementById("edit-tag").value,
+      body: document.getElementById("edit-body").value.trim(),
+      links,
+    };
+    this.editor.updateNode(this.currentOrb, fields);
+    this.currentMemory = this.currentOrb.userData.memory;
+    // refresh the view text and bounce back to view mode
+    this.cardDate.textContent = fields.date;
+    this.cardTitle.textContent = fields.title;
+    this.cardBody.textContent = fields.body;
+    this._showMode("view");
+    this.setStatus("saved");
+  }
+
+  _deleteCurrent() {
+    if (!this.currentMemory || !this.editor) return;
+    this.editor.deleteNode(this.currentMemory.id);
+    this.hideCard();
+    this.setStatus("deleted");
+  }
+
+  _addMemory() {
+    if (!this.editor) return;
+    const orb = this.editor.addNode({ title: "new memory", body: "type something…" });
+    this.showCard(orb.userData.memory);
+    this._showMode("edit");
+  }
+
+  _export() {
+    if (!this.editor) return;
+    const json = this.editor.exportJson();
+    navigator.clipboard?.writeText(json)
+      .then(() => this.setStatus("all memories copied to clipboard — paste into memories.local.json"))
+      .catch(() => {
+        // clipboard blocked? drop it in the console as a fallback
+        console.log(json);
+        this.setStatus("clipboard blocked — full JSON dumped to console");
+      });
+  }
+
+  // ---- talk -----------------------------------------------------------------
+
+  async _sendChat() {
+    const input = document.getElementById("chat-input");
+    const text = input.value.trim();
+    if (!text || !this.agent) return;
+    input.value = "";
+
+    this._appendChat("you", text);
+    const thinking = this._appendChat("servitor", "…");
+
+    try {
+      const reply = await this.agent.ask(text, this.currentMemory);
+      thinking.textContent = reply;
+    } catch (err) {
+      thinking.textContent = `[${err.message}]`;
+      thinking.classList.add("chat-error");
+    }
+    const log = document.getElementById("chat-log");
+    log.scrollTop = log.scrollHeight;
+  }
+
+  _appendChat(who, text) {
+    const log = document.getElementById("chat-log");
+    const line = document.createElement("div");
+    line.className = `chat-line chat-${who}`;
+    line.textContent = text;
+    log.appendChild(line);
+    log.scrollTop = log.scrollHeight;
+    return line;
   }
 }

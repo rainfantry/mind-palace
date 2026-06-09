@@ -6,6 +6,9 @@ data/*.local.json
 # YOUR ELEVENLABS KEY LIVES HERE AND NEVER GETS COMMITTED.
 js/voice.local.js
 
+# optional machine-specific local-model overrides
+js/agent.local.js
+
 # junk
 node_modules/
 .DS_Store

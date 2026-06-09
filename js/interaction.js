@@ -1,25 +1,22 @@
 // ---------------------------------------------------------------------------
-// interaction.js — where hands meet memories. Now multi-hand + gesture aware.
+// interaction.js — where hands meet memories. Multi-hand + gesture aware, and
+// now plugged into the force graph: a grabbed orb gets PINNED to your finger and
+// the sim drags its linked neighbours along on elastic.
 //
 // Per hand, every frame:
 //   - point             -> a crosshair tracks your fingertip
-//   - touch an orb       -> grab on CONTACT, drag it, holds ~2s (the "drag on
-//                           impact" behaviour). Move off and it lets go + drifts home.
-//   - closed fist        -> LOCK the grab, no timeout, until you open the hand
+//   - touch an orb       -> grab on CONTACT (pins it), drag it, holds ~2s
+//   - closed fist        -> LOCK the grab, no timeout
 //   - pinch              -> open the memory card (select / activate)
-//   - open palm          -> drop whatever that hand is holding
+//   - open palm          -> drop whatever that hand's holding
 //
-// Two hands = two independent cursors, so you can grab two orbs at once. That's
-// the multi-select.
-//
-// It also feeds the bottom-right readout (ui.setHud) with exactly what each hand
-// is doing, so you can see what the tracker sees.
+// Two hands = two cursors = grab two clusters at once.
+// Bottom-right readout shows exactly what each hand's doing.
 // ---------------------------------------------------------------------------
 
 import * as THREE from "three";
 
-// Contact-grab sticks for this long after you stop touching the orb. "A couple secs."
-const HOLD_MS = 2200;
+const HOLD_MS = 2200; // contact-grab stickiness — "a couple secs"
 
 export class Interaction {
   constructor(stage, swarm, narrator, ui) {
@@ -30,43 +27,28 @@ export class Interaction {
 
     this.raycaster = new THREE.Raycaster();
     this.pointer = new THREE.Vector2();
-
-    // One state bucket per hand index (0 and 1). Built lazily as hands appear.
     this.handStates = [];
-
-    // Drift released orbs back home every frame.
-    this.stage.onTick(() => this._driftHome());
   }
 
-  // Make (or fetch) the state for hand index i, including its own crosshair div.
   _stateFor(i) {
     if (this.handStates[i]) return this.handStates[i];
-
     const crosshair = document.createElement("div");
     crosshair.className = "crosshair";
     crosshair.style.opacity = "0";
     document.body.appendChild(crosshair);
-
     const state = {
-      crosshair,
-      grabbed: null,        // orb this hand is holding
-      grabExpires: 0,       // when a contact-grab lets go
-      locked: false,        // fist = no timeout
-      hovered: null,
-      wasPinching: false,
+      crosshair, grabbed: null, grabExpires: 0, locked: false,
+      hovered: null, wasPinching: false,
     };
     this.handStates[i] = state;
     return state;
   }
 
-  // Called every frame by hands.js.
   update(frame) {
     const hands = frame.hands || [];
-
-    // Process each visible hand.
     hands.forEach((hand, i) => this._processHand(this._stateFor(i), hand));
 
-    // Hide crosshairs / drop grabs for hands that left the frame.
+    // hands that left the frame: hide crosshair, drop their grab
     for (let i = hands.length; i < this.handStates.length; i++) {
       const s = this.handStates[i];
       if (!s) continue;
@@ -74,7 +56,6 @@ export class Interaction {
       this._release(s);
       this._setHover(s, null);
     }
-
     this._renderHud(hands);
   }
 
@@ -84,41 +65,23 @@ export class Interaction {
 
     this._moveCrosshair(state, cursor, pinch);
     this.pointer.set(cursor.x, cursor.y);
-
     const justPinched = pinch && !state.wasPinching;
 
-    // Open palm = let go, always.
     if (gesture === "Open_Palm") this._release(state);
 
     if (state.grabbed) {
-      // ---- holding something ----
       this._dragOrb(state.grabbed);
-
-      // Fist locks the hold; otherwise it's a timed contact-grab.
       state.locked = gesture === "Closed_Fist";
       const stillTouching = this._raycastOrb() === state.grabbed;
-      if (stillTouching || state.locked || pinch) {
-        state.grabExpires = now + HOLD_MS; // refresh the timer
-      }
-      if (!state.locked && now > state.grabExpires) {
-        this._release(state); // couple secs up, drift home
-      }
-
-      // Pinch while holding = open that memory.
+      if (stillTouching || state.locked || pinch) state.grabExpires = now + HOLD_MS;
+      if (!state.locked && now > state.grabExpires) this._release(state);
       if (justPinched) this._openMemory(state.grabbed.userData.memory);
-
     } else {
-      // ---- empty hand ----
       const hit = this._raycastOrb();
       this._setHover(state, hit);
-
-      // Grab on contact.
       if (hit) this._grab(state, hit, now);
-
-      // Pinch on empty hand over an orb still opens it (in case grab didn't take).
       if (justPinched && hit) this._openMemory(hit.userData.memory);
     }
-
     state.wasPinching = pinch;
   }
 
@@ -138,7 +101,6 @@ export class Interaction {
 
   _setHover(state, orb) {
     if (state.hovered === orb) return;
-    // Only dim the old one if no OTHER hand is holding/hovering it.
     if (state.hovered && !this._claimedElsewhere(state, state.hovered)) {
       state.hovered.material.emissiveIntensity = 0.6;
       state.hovered.userData.baseScale = 1;
@@ -150,53 +112,39 @@ export class Interaction {
     }
   }
 
-  // Is some other hand already hovering/holding this orb? Stops one hand dimming
-  // an orb the other hand still cares about.
   _claimedElsewhere(self, orb) {
     return this.handStates.some((s) => s && s !== self && (s.grabbed === orb || s.hovered === orb));
   }
 
   _grab(state, orb, now) {
-    // Don't steal an orb another hand is already holding.
     if (this.handStates.some((s) => s && s !== state && s.grabbed === orb)) return;
     state.grabbed = orb;
     state.grabExpires = now + HOLD_MS;
+    orb.userData.pinned = true;     // tell the force sim to leave it alone
     orb.userData.baseScale = 1.4;
   }
 
   _release(state) {
-    if (state.grabbed) state.grabbed.userData.baseScale = 1;
+    if (state.grabbed) {
+      state.grabbed.userData.pinned = false; // hand it back to the sim
+      state.grabbed.userData.baseScale = 1;
+    }
     state.grabbed = null;
     state.locked = false;
   }
 
+  // Move the grabbed orb so it sits under the cursor at its own depth.
   _dragOrb(orb) {
     this.raycaster.setFromCamera(this.pointer, this.stage.camera);
     const camDir = new THREE.Vector3();
     this.stage.camera.getWorldDirection(camDir);
-
     const orbWorld = new THREE.Vector3();
     orb.getWorldPosition(orbWorld);
-
     const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(camDir, orbWorld);
     const hit = new THREE.Vector3();
     if (this.raycaster.ray.intersectPlane(plane, hit)) {
       this.stage.world.worldToLocal(hit);
       orb.position.copy(hit);
-    }
-  }
-
-  _driftHome() {
-    const held = new Set(this.handStates.filter(Boolean).map((s) => s.grabbed));
-    for (const orb of this.swarm.orbs) {
-      if (held.has(orb)) continue;
-      orb.position.lerp(orb.userData.homePosition, 0.02);
-      if (orb.userData.label) {
-        orb.userData.label.position.lerp(
-          orb.userData.homePosition.clone().add(new THREE.Vector3(0, 1.6, 0)),
-          0.02
-        );
-      }
     }
   }
 
@@ -206,7 +154,6 @@ export class Interaction {
     this.narrator.speak(`${memory.title}. ${memory.body}`);
   }
 
-  // Build the bottom-right detection readout.
   _renderHud(hands) {
     if (hands.length === 0) {
       this.ui.setHud("no hands detected\n(point at the camera)");
@@ -215,15 +162,13 @@ export class Interaction {
     const lines = [`hands: ${hands.length}`];
     hands.forEach((h, i) => {
       const s = this.handStates[i];
-      const doing = s?.grabbed
-        ? (s.locked ? "LOCKED grab" : "dragging")
-        : (s?.hovered ? "hovering" : "—");
-      const grabbedTitle = s?.grabbed?.userData?.memory?.title ?? "";
+      const doing = s?.grabbed ? (s.locked ? "LOCKED grab" : "dragging") : (s?.hovered ? "hovering" : "—");
+      const title = s?.grabbed?.userData?.memory?.title ?? "";
       lines.push(
         `H${i} ${h.handedness.padEnd(5)} ${h.gesture}`,
         `   pinch ${h.pinchDist.toFixed(2)} ${h.pinch ? "●CLOSED" : "○open"}`,
         `   x ${h.cursor.x.toFixed(2)}  y ${h.cursor.y.toFixed(2)}`,
-        `   → ${doing}${grabbedTitle ? ": " + grabbedTitle : ""}`
+        `   → ${doing}${title ? ": " + title : ""}`
       );
     });
     this.ui.setHud(lines.join("\n"));

@@ -19,7 +19,7 @@ html, body {
   background: var(--ink);
   color: var(--text);
   font-family: var(--font);
-  cursor: none; /* hide the real cursor — your finger IS the cursor now */
+  cursor: default; /* real cursor stays visible so the mouse UI is clickable; the hand gets its own crosshair */
 }
 
 /* Webcam sits behind everything, dimmed right down so it's just a ghost of you
@@ -155,3 +155,124 @@ html, body {
   cursor: pointer;
 }
 #card-speak:hover { background: rgba(79, 209, 255, 0.25); }
+
+/* ===========================================================================
+   v2 — toolbar, editor, chat. All mouse-driven UI.
+   =========================================================================== */
+
+/* Top-left toolbar. */
+#toolbar {
+  position: fixed;
+  top: 14px; left: 16px;
+  z-index: 7;
+  display: flex;
+  gap: 8px;
+}
+#toolbar button {
+  font-family: var(--font);
+  font-size: 12px;
+  color: var(--glow);
+  background: rgba(10, 16, 24, 0.7);
+  border: 1px solid rgba(79, 209, 255, 0.3);
+  border-radius: 6px;
+  padding: 7px 11px;
+  cursor: pointer;
+}
+#toolbar button:hover { background: rgba(79, 209, 255, 0.18); }
+
+/* Shared section show/hide inside the card. */
+#card-view.hidden,
+#card-edit-form.hidden,
+#card-chat.hidden { display: none; }
+
+/* Action button rows. */
+.card-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 18px;
+  flex-wrap: wrap;
+}
+.card-actions button {
+  flex: 1 1 auto;
+  padding: 9px 12px;
+  background: rgba(79, 209, 255, 0.12);
+  border: 1px solid var(--glow);
+  border-radius: 6px;
+  color: var(--glow);
+  font-family: var(--font);
+  font-size: 13px;
+  cursor: pointer;
+}
+.card-actions button:hover { background: rgba(79, 209, 255, 0.25); }
+.card-actions button.danger { color: var(--warn); border-color: var(--warn); }
+.card-actions button.danger:hover { background: rgba(255, 92, 92, 0.18); }
+
+/* Edit form. */
+#card-edit-form label {
+  display: block;
+  font-size: 11px;
+  color: var(--glow);
+  opacity: 0.8;
+  margin-bottom: 12px;
+}
+#card-edit-form input,
+#card-edit-form textarea,
+#card-edit-form select {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(79, 209, 255, 0.3);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 14px;
+  resize: vertical;
+}
+
+/* Chat / talk. */
+#chat-log {
+  max-height: 38vh;
+  overflow-y: auto;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.chat-line {
+  padding: 8px 11px;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+.chat-you { background: rgba(79, 209, 255, 0.14); align-self: flex-end; max-width: 85%; }
+.chat-servitor { background: rgba(255, 255, 255, 0.06); align-self: flex-start; max-width: 90%; }
+.chat-error { color: var(--warn); }
+.chat-row { display: flex; gap: 8px; }
+.chat-row input {
+  flex: 1;
+  padding: 9px 11px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(79, 209, 255, 0.3);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 14px;
+}
+.chat-row button {
+  padding: 9px 14px;
+  background: rgba(79, 209, 255, 0.18);
+  border: 1px solid var(--glow);
+  border-radius: 6px;
+  color: var(--glow);
+  font-family: var(--font);
+  cursor: pointer;
+}
+#chat-model {
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--glow);
+  opacity: 0.55;
+}

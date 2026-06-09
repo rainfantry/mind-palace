@@ -90,10 +90,23 @@ docs/                   these docs
 3. One job per module. Wiring goes in `main.js`.
 4. Don't break the no-build-step constraint.
 
+## Gesture model (current)
+
+Set in `js/interaction.js`. If you change it, update this list.
+- **point** (index out) → crosshair tracks the fingertip
+- **pinch + hold** over an orb → grab + drag it (pinned; linked cluster follows)
+- **open fingers wide / open palm** on an orb → expand: open the card + read aloud
+- two hands = two independent cursors
+- thresholds: `PINCH_THRESHOLD` (hands.js, ~0.06) for pinch, `SPREAD_THRESHOLD`
+  (interaction.js, ~0.22) for the open-to-expand
+
 ## Current state (as of this handoff)
 
 - Phases A–E complete and syntax-clean (`node --check --input-type=module` on each
   `js/*.js` passes).
+- Interaction is pinch-to-drag / open-to-expand. TTS is locked to once-per-selection
+  (`Narrator.speaking`); deliberate plays pass `{ force:true }`.
+- Editor has a searchable link picker (chips + dropdown) that draws edges.
 - Phase F (the face) not started.
 - Known rough edges are listed at the bottom of `CODEPLAN.md`.
 

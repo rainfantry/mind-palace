@@ -71,10 +71,11 @@ colour. `date` drives sort order and the initial helix spread.
    frame: springs pull linked orbs together, repulsion spreads them, a weak centre
    pull keeps it bounded.
 4. `HandTracker` feeds `{hands:[…]}` every frame to `Interaction`.
-5. Grabbing an orb sets `orb.userData.pinned = true`; the sim leaves pinned orbs
+5. **Pinching** an orb sets `orb.userData.pinned = true`; the sim leaves pinned orbs
    where the finger puts them, so dragging one stretches its linked cluster on
-   elastic.
-6. Opening a memory → `UI.showCard` → read aloud (`Narrator`) and/or `Agent.ask`.
+   elastic. Release the pinch to drop it.
+6. **Opening your fingers** on an orb expands it → `UI.showCard` → read aloud
+   (`Narrator`, locked to once per selection) and/or `Agent.ask`.
 7. Edits go through `Editor` → mutate the orb's memory → `Store.save`.
 
 ## The combination (where the rest of George's work plugs in)

@@ -1,22 +1,29 @@
 // ---------------------------------------------------------------------------
 // interaction.js — where hands meet memories. Multi-hand + gesture aware, and
-// now plugged into the force graph: a grabbed orb gets PINNED to your finger and
-// the sim drags its linked neighbours along on elastic.
+// plugged into the force graph.
 //
-// Per hand, every frame:
-//   - point             -> a crosshair tracks your fingertip
-//   - touch an orb       -> grab on CONTACT (pins it), drag it, holds ~2s
-//   - closed fist        -> LOCK the grab, no timeout
-//   - pinch              -> open the memory card (select / activate)
-//   - open palm          -> drop whatever that hand's holding
+// GESTURE MODEL:
+//   - point (open hand, index out)  -> a crosshair tracks your fingertip
+//   - PINCH and hold over an orb     -> grab it; while pinched, drag it. The orb
+//                                       is pinned, so its linked cluster gets
+//                                       dragged along on elastic. Release = drop.
+//   - OPEN your fingers wide (spread / open-palm) on an orb -> EXPAND it: open the
+//                                       memory card and read it aloud.
 //
-// Two hands = two cursors = grab two clusters at once.
-// Bottom-right readout shows exactly what each hand's doing.
+// So: pinch = move it, open your hand = pop it open. Two hands work independently.
+// Bottom-right readout shows what each hand is doing.
 // ---------------------------------------------------------------------------
 
 import * as THREE from "three";
 
-const HOLD_MS = 2200; // contact-grab stickiness — "a couple secs"
+// Fingers counted "wide open" past this thumb-to-index distance. Pinch closed is
+// well under PINCH_THRESHOLD (see hands.js, ~0.06), so this is a clear gap.
+const SPREAD_THRESHOLD = 0.22;
+
+// Only treat an open as "expand" if it happened shortly after a pinch, or it's a
+// clean open-palm. And don't let it re-fire faster than this.
+const PINCH_MEMORY_MS = 800;
+const EXPAND_DEBOUNCE_MS = 700;
 
 export class Interaction {
   constructor(stage, swarm, narrator, ui) {
@@ -37,8 +44,8 @@ export class Interaction {
     crosshair.style.opacity = "0";
     document.body.appendChild(crosshair);
     const state = {
-      crosshair, grabbed: null, grabExpires: 0, locked: false,
-      hovered: null, wasPinching: false,
+      crosshair, grabbed: null, hovered: null,
+      wasPinching: false, pinchedAt: 0, lastExpand: 0,
     };
     this.handStates[i] = state;
     return state;
@@ -48,7 +55,6 @@ export class Interaction {
     const hands = frame.hands || [];
     hands.forEach((hand, i) => this._processHand(this._stateFor(i), hand));
 
-    // hands that left the frame: hide crosshair, drop their grab
     for (let i = hands.length; i < this.handStates.length; i++) {
       const s = this.handStates[i];
       if (!s) continue;
@@ -61,27 +67,40 @@ export class Interaction {
 
   _processHand(state, hand) {
     const now = performance.now();
-    const { cursor, pinch, gesture } = hand;
+    const { cursor, pinch, pinchDist, gesture } = hand;
 
     this._moveCrosshair(state, cursor, pinch);
     this.pointer.set(cursor.x, cursor.y);
+
+    const hit = this._raycastOrb();
     const justPinched = pinch && !state.wasPinching;
 
-    if (gesture === "Open_Palm") this._release(state);
-
+    // ---- PINCH = grab + drag ----
+    if (justPinched && hit) this._grab(state, hit);
     if (state.grabbed) {
-      this._dragOrb(state.grabbed);
-      state.locked = gesture === "Closed_Fist";
-      const stillTouching = this._raycastOrb() === state.grabbed;
-      if (stillTouching || state.locked || pinch) state.grabExpires = now + HOLD_MS;
-      if (!state.locked && now > state.grabExpires) this._release(state);
-      if (justPinched) this._openMemory(state.grabbed.userData.memory);
-    } else {
-      const hit = this._raycastOrb();
-      this._setHover(state, hit);
-      if (hit) this._grab(state, hit, now);
-      if (justPinched && hit) this._openMemory(hit.userData.memory);
+      if (pinch) {
+        this._dragOrb(state.grabbed);   // still pinched: drag it
+      } else {
+        this._release(state);           // let go: drop it
+      }
     }
+    if (pinch) state.pinchedAt = now;     // remember we were pinching (for the open-to-expand)
+
+    // ---- OPEN FINGERS = expand + read ----
+    const openedFromPinch = !pinch && pinchDist >= SPREAD_THRESHOLD &&
+                            (now - state.pinchedAt < PINCH_MEMORY_MS);
+    const openPalm = gesture === "Open_Palm";
+    if ((openedFromPinch || openPalm) && (now - state.lastExpand > EXPAND_DEBOUNCE_MS)) {
+      const target = state.grabbed || hit;
+      if (target) {
+        this._expand(state, target);
+        state.lastExpand = now;
+        state.pinchedAt = 0;
+      }
+    }
+
+    // hover highlight
+    this._setHover(state, state.grabbed || hit);
     state.wasPinching = pinch;
   }
 
@@ -116,24 +135,21 @@ export class Interaction {
     return this.handStates.some((s) => s && s !== self && (s.grabbed === orb || s.hovered === orb));
   }
 
-  _grab(state, orb, now) {
+  _grab(state, orb) {
     if (this.handStates.some((s) => s && s !== state && s.grabbed === orb)) return;
     state.grabbed = orb;
-    state.grabExpires = now + HOLD_MS;
-    orb.userData.pinned = true;     // tell the force sim to leave it alone
+    orb.userData.pinned = true;       // force sim leaves it where the finger puts it
     orb.userData.baseScale = 1.4;
   }
 
   _release(state) {
     if (state.grabbed) {
-      state.grabbed.userData.pinned = false; // hand it back to the sim
+      state.grabbed.userData.pinned = false;
       state.grabbed.userData.baseScale = 1;
     }
     state.grabbed = null;
-    state.locked = false;
   }
 
-  // Move the grabbed orb so it sits under the cursor at its own depth.
   _dragOrb(orb) {
     this.raycaster.setFromCamera(this.pointer, this.stage.camera);
     const camDir = new THREE.Vector3();
@@ -148,10 +164,17 @@ export class Interaction {
     }
   }
 
+  // Open the memory card + read it. Also a quick visual pop so the expand reads.
+  _expand(state, orb) {
+    if (state.grabbed) this._release(state); // opening your hand drops the grab
+    orb.material.emissiveIntensity = 2.0;
+    this._openMemory(orb.userData.memory);
+  }
+
   _openMemory(memory) {
     if (!memory) return;
     this.ui.showCard(memory);
-    this.narrator.speak(`${memory.title}. ${memory.body}`);
+    this.narrator.speak(`${memory.title}. ${memory.body}`); // guarded: once per loop
   }
 
   _renderHud(hands) {
@@ -162,11 +185,11 @@ export class Interaction {
     const lines = [`hands: ${hands.length}`];
     hands.forEach((h, i) => {
       const s = this.handStates[i];
-      const doing = s?.grabbed ? (s.locked ? "LOCKED grab" : "dragging") : (s?.hovered ? "hovering" : "—");
-      const title = s?.grabbed?.userData?.memory?.title ?? "";
+      const doing = s?.grabbed ? "dragging" : (s?.hovered ? "hovering" : "—");
+      const title = s?.grabbed?.userData?.memory?.title ?? s?.hovered?.userData?.memory?.title ?? "";
       lines.push(
         `H${i} ${h.handedness.padEnd(5)} ${h.gesture}`,
-        `   pinch ${h.pinchDist.toFixed(2)} ${h.pinch ? "●CLOSED" : "○open"}`,
+        `   pinch ${h.pinchDist.toFixed(2)} ${h.pinch ? "●CLOSED→drag" : "○open"}`,
         `   x ${h.cursor.x.toFixed(2)}  y ${h.cursor.y.toFixed(2)}`,
         `   → ${doing}${title ? ": " + title : ""}`
       );

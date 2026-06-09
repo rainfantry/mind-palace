@@ -14,7 +14,7 @@ for last on purpose.
 ### Phase B — two hands + gestures ✅
 - swapped HandLandmarker → GestureRecognizer (fist, open palm, point, …)
 - two-hand tracking = multi-select
-- contact-grab with a ~2s hold; fist locks; open palm drops
+- gesture model: **pinch + hold = grab/drag**, **open fingers = expand + read**
 - bottom-right live detection readout
 
 ### Phase C — the cloned voice ✅
@@ -27,10 +27,12 @@ for last on purpose.
 - grabbing pins an orb; dragging stretches its linked cluster on elastic
 
 ### Phase E — editor + local model ✅
-- mouse editor: add / edit / delete memories, edit links, export JSON
+- mouse editor: add / edit / delete memories, export JSON
+- searchable link picker (chips + dropdown) that draws edges
 - edits persist to localStorage and merge on top of seed + local file
 - `agent.js`: talk to a local Ollama model (qwen-code) about a memory,
   config in `agent.config.js`, reply optionally read in the cloned voice
+- TTS locked to once-per-selection (`Narrator.speaking`)
 
 ## Next
 

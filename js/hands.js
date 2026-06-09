@@ -1,52 +1,58 @@
 // ---------------------------------------------------------------------------
-// hands.js — the webcam hand tracker.
+// hands.js — the webcam hand tracker + gesture reader.
 //
-// This is the Jarvis bit. MediaPipe watches the webcam, finds your hand, gives
-// us 21 points. We care about two of them: the index fingertip (where you're
-// pointing) and the thumb tip (to measure a pinch).
+// Upgraded from plain landmarks to MediaPipe's GESTURE RECOGNIZER. Same 21
+// points per hand, but now it also names the shape your hand is making —
+// Closed_Fist, Open_Palm, Pointing_Up, Thumb_Up, Victory, etc. And it tracks
+// TWO hands so you can grab with both.
 //
-// Every frame it calls back with { cursor, pinch }:
-//   cursor = { x, y } in normalised device coords (-1..1), or null if no hand
-//   pinch  = true when thumb and index are touching
+// Every frame it calls back with { hands: [...] }, one entry per hand seen:
+//   {
+//     cursor:    { x, y }   index fingertip in NDC (-1..1), or where you point
+//     pinch:     bool       thumb + index touching
+//     pinchDist: number     raw distance (for the readout / tuning)
+//     gesture:   string      "Open_Palm" | "Closed_Fist" | "None" | ...
+//     handedness:string      "Left" | "Right" (or "Mouse" in fallback)
+//   }
+// Empty array = nothing in view.
 //
-// If the camera's blocked or there's no hand, it quietly falls back to the
-// MOUSE so you can still test the 3D without waving your arms around like a
-// lunatic. Move mouse = point, hold left button = pinch.
+// No camera? Falls back to the mouse, one "hand", same shape — so it all still
+// runs without you waving your arms about.
 // ---------------------------------------------------------------------------
 
-import { HandLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0";
+import { GestureRecognizer, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0";
 
-// MediaPipe landmark indices — these are fixed by the model, don't change them.
+// Fixed by the model — don't touch.
 const INDEX_TIP = 8;
 const THUMB_TIP = 4;
 
-// How close thumb and index have to get (in normalised image space) to count as
-// a pinch. Bump it up if pinches aren't registering, down if it's too twitchy.
+// Pinch sensitivity. Bigger = easier to trigger, smaller = needs a tighter pinch.
 const PINCH_THRESHOLD = 0.06;
+
+// How many hands to track. Two so you can multi-select.
+const MAX_HANDS = 2;
 
 export class HandTracker {
   constructor(videoEl, onFrame) {
     this.video = videoEl;
-    this.onFrame = onFrame;        // we call this every frame with the cursor + pinch
-    this.landmarker = null;
-    this.usingMouse = false;
+    this.onFrame = onFrame;
+    this.recognizer = null;
     this.lastVideoTime = -1;
   }
 
-  // Try to get the camera + model going. If anything's cooked, fall back to mouse.
   async start(setStatus) {
     try {
-      setStatus("loading hand model…");
+      setStatus("loading gesture model…");
       const fileset = await FilesetResolver.forVisionTasks(
         "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm"
       );
-      this.landmarker = await HandLandmarker.createFromOptions(fileset, {
+      this.recognizer = await GestureRecognizer.createFromOptions(fileset, {
         baseOptions: {
-          modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+          modelAssetPath: "https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task",
           delegate: "GPU",
         },
         runningMode: "VIDEO",
-        numHands: 1,
+        numHands: MAX_HANDS,
       });
 
       setStatus("asking for the camera…");
@@ -54,71 +60,72 @@ export class HandTracker {
       this.video.srcObject = stream;
       await this.video.play();
 
-      setStatus("hand tracking live — wave at it");
-      this._loopHands();
+      setStatus("tracking live — two hands, gestures on");
+      this._loop();
     } catch (err) {
-      // No camera, blocked permission, served over file:// — whatever. Don't die.
-      console.warn("hand tracking didn't start, falling back to mouse:", err);
+      console.warn("tracking didn't start, mouse fallback:", err);
       setStatus("no camera — mouse fallback (move = point, hold click = pinch)");
       this._startMouse();
     }
   }
 
-  // The real loop: read the webcam frame, run the model, work out cursor + pinch.
-  _loopHands() {
+  _loop() {
     const tick = () => {
-      // Only run the model on fresh frames, no point chewing GPU on the same one.
       if (this.video.currentTime !== this.lastVideoTime && this.video.readyState >= 2) {
         this.lastVideoTime = this.video.currentTime;
-        const result = this.landmarker.detectForVideo(this.video, performance.now());
-
-        if (result.landmarks && result.landmarks.length > 0) {
-          const hand = result.landmarks[0];
-          this.onFrame(this._readHand(hand));
-        } else {
-          // hand left the frame — tell the world there's no cursor
-          this.onFrame({ cursor: null, pinch: false });
-        }
+        const res = this.recognizer.recognizeForVideo(this.video, performance.now());
+        this.onFrame({ hands: this._readHands(res) });
       }
       requestAnimationFrame(tick);
     };
     tick();
   }
 
-  // Convert one hand's landmarks into a cursor + pinch.
-  _readHand(hand) {
-    const tip = hand[INDEX_TIP];
-    const thumb = hand[THUMB_TIP];
+  // Turn the raw MediaPipe result into our tidy per-hand list.
+  _readHands(res) {
+    const out = [];
+    const allLandmarks = res.landmarks || [];
 
-    // The webcam is shown mirrored (like a real mirror), so we mirror x to match.
-    // lm.x and lm.y come in 0..1 with origin top-left. NDC wants -1..1 with y up.
-    const cursor = {
-      x: 1 - 2 * tip.x,   // mirrored
-      y: 1 - 2 * tip.y,   // flipped so up is up
-    };
+    for (let i = 0; i < allLandmarks.length; i++) {
+      const hand = allLandmarks[i];
+      const tip = hand[INDEX_TIP];
+      const thumb = hand[THUMB_TIP];
 
-    // Pinch = thumb tip and index tip basically touching. Straight 2D distance
-    // in normalised space is plenty for this.
-    const dx = tip.x - thumb.x;
-    const dy = tip.y - thumb.y;
-    const pinch = Math.hypot(dx, dy) < PINCH_THRESHOLD;
+      // Mirror x (webcam shown like a mirror), flip y so up is up. NDC -1..1.
+      const cursor = { x: 1 - 2 * tip.x, y: 1 - 2 * tip.y };
 
-    return { cursor, pinch };
+      const pinchDist = Math.hypot(tip.x - thumb.x, tip.y - thumb.y);
+      const pinch = pinchDist < PINCH_THRESHOLD;
+
+      // gestures/handednesses are arrays-of-arrays, top candidate is [0].
+      const gesture = res.gestures?.[i]?.[0]?.categoryName ?? "None";
+      const handedness = res.handednesses?.[i]?.[0]?.categoryName ?? "?";
+
+      out.push({ cursor, pinch, pinchDist, gesture, handedness });
+    }
+    return out;
   }
 
-  // Mouse fallback so the thing's testable without a webcam.
+  // Mouse stand-in so the thing's testable with no webcam.
   _startMouse() {
-    this.usingMouse = true;
     let pinching = false;
-
-    window.addEventListener("mousemove", (e) => {
+    const emit = (e) => {
       const cursor = {
         x: (e.clientX / window.innerWidth) * 2 - 1,
         y: -((e.clientY / window.innerHeight) * 2 - 1),
       };
-      this.onFrame({ cursor, pinch: pinching });
-    });
-    window.addEventListener("mousedown", () => { pinching = true; });
-    window.addEventListener("mouseup", () => { pinching = false; });
+      this.onFrame({
+        hands: [{
+          cursor,
+          pinch: pinching,
+          pinchDist: pinching ? 0 : 1,
+          gesture: pinching ? "Pinch(mouse)" : "None",
+          handedness: "Mouse",
+        }],
+      });
+    };
+    window.addEventListener("mousemove", emit);
+    window.addEventListener("mousedown", (e) => { pinching = true; emit(e); });
+    window.addEventListener("mouseup", (e) => { pinching = false; emit(e); });
   }
 }

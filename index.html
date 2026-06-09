@@ -47,8 +47,12 @@
     <button id="card-speak">▶ read it to me</button>
   </div>
 
-  <!-- A crosshair that follows your fingertip so you can see where you're pointing. -->
-  <div id="cursor"></div>
+  <!-- Crosshairs are spawned per-hand in interaction.js (up to two), so you can
+       see both fingertips when you're two-handing it. -->
+
+  <!-- Bottom-right: live readout of exactly what the tracker is seeing per hand —
+       handedness, gesture, pinch distance, fingertip coords, what it's doing. -->
+  <div id="hud">tracker: booting…</div>
 
   <script type="module" src="js/main.js"></script>
 </body>

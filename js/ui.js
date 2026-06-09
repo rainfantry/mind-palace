@@ -15,6 +15,7 @@ export class UI {
     this.cardTitle = document.getElementById("card-title");
     this.cardBody = document.getElementById("card-body");
     this.statusEl = document.getElementById("status");
+    this.hudEl = document.getElementById("hud");
 
     this.current = null; // the memory currently shown
 
@@ -28,6 +29,11 @@ export class UI {
   // Bottom-left status text.
   setStatus(text) {
     if (this.statusEl) this.statusEl.textContent = text;
+  }
+
+  // Bottom-right live detection readout (driven by interaction.js every frame).
+  setHud(text) {
+    if (this.hudEl) this.hudEl.textContent = text;
   }
 
   // Show a memory in the side card.

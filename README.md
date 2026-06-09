@@ -11,11 +11,24 @@ and gives them hands you can reach into.
 
 ## What it actually does right now
 
-- **Hand tracking** off a plain webcam — MediaPipe finds your hand, tracks 21 points.
-- **Point** with your index finger to aim. A crosshair follows your fingertip.
-- **Pinch** (thumb + index together) to grab a memory orb and drag it around.
-- **Quick pinch** on an orb to crack it open — the card slides in and it gets read aloud.
-- **No camera? No dramas.** It falls back to the mouse automatically: move to point, hold left-click to pinch. So you can work on the 3D without waving your arms about.
+Tracks **two hands** off a plain webcam and reads **gestures** (MediaPipe Gesture
+Recognizer — fist, open palm, point, etc). Controls:
+
+| Do this | Get this |
+|---------|----------|
+| **Point** (index finger) | crosshair tracks your fingertip |
+| **Touch an orb** | grabs on contact, drags with your finger, holds ~2s |
+| **Closed fist** | locks the grab — drag as long as you like, no timeout |
+| **Pinch** (thumb + index) | opens the memory — card slides in, read aloud |
+| **Open palm** | drops whatever that hand's holding |
+| **Two hands** | two cursors = grab two orbs at once (multi-select) |
+
+Bottom-right is a live **detection readout** — per hand it shows handedness,
+gesture, pinch distance, fingertip coords, and what it's currently doing. That's
+your window into what the tracker actually sees.
+
+**No camera? No dramas.** Falls back to the mouse automatically: move to point,
+hold left-click to pinch. So you can work on the 3D without waving your arms about.
 
 ## Run it
 

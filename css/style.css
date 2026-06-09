@@ -56,9 +56,29 @@ html, body {
   text-transform: lowercase;
 }
 
+/* Bottom-right detection readout. Monospace so the columns line up. */
+#hud {
+  position: fixed;
+  bottom: 14px; right: 16px;
+  z-index: 5;
+  font-size: 12px;
+  line-height: 1.5;
+  letter-spacing: 0.02em;
+  color: var(--glow);
+  opacity: 0.85;
+  text-align: left;
+  white-space: pre;
+  padding: 10px 12px;
+  background: rgba(10, 16, 24, 0.6);
+  border: 1px solid rgba(79, 209, 255, 0.25);
+  border-radius: 8px;
+  pointer-events: none;
+  min-width: 220px;
+}
+
 /* Fingertip crosshair. Gets a class added when you're pinching so you get
-   feedback that the grab actually landed. */
-#cursor {
+   feedback that the grab actually landed. One per hand. */
+.crosshair {
   position: fixed;
   top: 0; left: 0;
   width: 26px; height: 26px;
@@ -70,7 +90,7 @@ html, body {
   transition: transform 0.06s linear, background 0.1s;
   mix-blend-mode: screen;
 }
-#cursor.pinch {
+.crosshair.pinch {
   transform: scale(0.55);
   background: var(--glow);
 }

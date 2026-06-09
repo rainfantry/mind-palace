@@ -20,6 +20,7 @@ export class UI {
 
     this.currentMemory = null;
     this.currentOrb = null;
+    this._editLinks = [];   // ids currently selected in the link picker
 
     // static elements (exist from page load)
     this.statusEl = document.getElementById("status");
@@ -61,6 +62,16 @@ export class UI {
       if (e.key === "Enter") this._sendChat();
     });
 
+    // link picker — search + show results
+    const linkSearch = document.getElementById("link-search");
+    linkSearch.addEventListener("input", () => this._filterLinkResults(linkSearch.value));
+    linkSearch.addEventListener("focus", () => this._filterLinkResults(linkSearch.value));
+    // click outside the picker closes the dropdown
+    document.addEventListener("click", (e) => {
+      const picker = document.getElementById("link-picker");
+      if (picker && !picker.contains(e.target)) this._hideLinkResults();
+    });
+
     const modelEl = document.getElementById("chat-model");
     if (modelEl) modelEl.textContent = this.agent?.enabled ? `model: ${this.agent.modelName}` : "local model off";
   }
@@ -99,7 +110,8 @@ export class UI {
 
   _speakCurrent() {
     if (this.currentMemory) {
-      this.narrator.speak(`${this.currentMemory.title}. ${this.currentMemory.body}`);
+      // deliberate button press — force it, interrupts any current read
+      this.narrator.speak(`${this.currentMemory.title}. ${this.currentMemory.body}`, { force: true });
     }
   }
 
@@ -112,13 +124,17 @@ export class UI {
     document.getElementById("edit-date").value = m.date || "";
     document.getElementById("edit-tag").value = m.tag || "build";
     document.getElementById("edit-body").value = m.body || "";
-    document.getElementById("edit-links").value = (m.links || []).join(", ");
+
+    // load existing links into the picker
+    this._editLinks = [...(m.links || [])];
+    this._renderLinkChips();
+    document.getElementById("link-search").value = "";
+    this._hideLinkResults();
   }
 
   _saveEdit() {
     if (!this.currentOrb || !this.editor) return;
-    const links = document.getElementById("edit-links").value
-      .split(",").map((s) => s.trim()).filter(Boolean);
+    const links = [...this._editLinks];
     const fields = {
       title: document.getElementById("edit-title").value.trim(),
       date: document.getElementById("edit-date").value.trim(),
@@ -141,6 +157,71 @@ export class UI {
     this.editor.deleteNode(this.currentMemory.id);
     this.hideCard();
     this.setStatus("deleted");
+  }
+
+  // ---- link picker ----------------------------------------------------------
+
+  // Show the selected links as removable chips.
+  _renderLinkChips() {
+    const wrap = document.getElementById("link-chips");
+    wrap.innerHTML = "";
+    for (const id of this._editLinks) {
+      const mem = this._memoryById(id);
+      const chip = document.createElement("span");
+      chip.className = "link-chip";
+      chip.textContent = mem ? mem.title : id;
+      const x = document.createElement("button");
+      x.className = "chip-x";
+      x.textContent = "✕";
+      x.addEventListener("click", () => this._removeLink(id));
+      chip.appendChild(x);
+      wrap.appendChild(chip);
+    }
+  }
+
+  // Filter all other memories by the search text and show the dropdown.
+  _filterLinkResults(query) {
+    const box = document.getElementById("link-results");
+    const q = query.trim().toLowerCase();
+    const selfId = this.currentMemory?.id;
+
+    const matches = (this.swarm?.orbs || [])
+      .map((o) => o.userData.memory)
+      .filter((m) => m.id !== selfId && !this._editLinks.includes(m.id))
+      .filter((m) => !q || m.title.toLowerCase().includes(q) || m.id.toLowerCase().includes(q))
+      .slice(0, 8);
+
+    box.innerHTML = "";
+    if (matches.length === 0) { this._hideLinkResults(); return; }
+
+    for (const m of matches) {
+      const item = document.createElement("div");
+      item.className = "link-result";
+      item.textContent = m.title;
+      item.addEventListener("click", () => this._addLink(m.id));
+      box.appendChild(item);
+    }
+    box.classList.remove("hidden");
+  }
+
+  _addLink(id) {
+    if (!this._editLinks.includes(id)) this._editLinks.push(id);
+    this._renderLinkChips();
+    document.getElementById("link-search").value = "";
+    this._hideLinkResults();
+  }
+
+  _removeLink(id) {
+    this._editLinks = this._editLinks.filter((x) => x !== id);
+    this._renderLinkChips();
+  }
+
+  _hideLinkResults() {
+    document.getElementById("link-results")?.classList.add("hidden");
+  }
+
+  _memoryById(id) {
+    return this.swarm?.orbs.find((o) => o.userData.memory.id === id)?.userData.memory || null;
   }
 
   _addMemory() {

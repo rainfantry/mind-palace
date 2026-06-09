@@ -61,7 +61,8 @@ export class Agent {
 
     const data = await res.json();
     const reply = data?.message?.content?.trim() || "(no reply)";
-    if (this.cfg.speakReplies && this.narrator) this.narrator.speak(reply);
+    // force:true — a deliberate reply cuts in over any memory being read
+    if (this.cfg.speakReplies && this.narrator) this.narrator.speak(reply, { force: true });
     return reply;
   }
 }

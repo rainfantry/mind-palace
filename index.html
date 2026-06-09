@@ -73,9 +73,12 @@
       <label>body (this is what gets read aloud)
         <textarea id="edit-body" rows="5"></textarea>
       </label>
-      <label>links — comma-separated node ids
-        <input id="edit-links" type="text" placeholder="servitor, voice-clone" />
-      </label>
+      <label>links — search memories to connect (this draws the lines)</label>
+      <div id="link-picker">
+        <div id="link-chips"></div>
+        <input id="link-search" type="text" autocomplete="off" placeholder="type to find a memory…" />
+        <div id="link-results" class="hidden"></div>
+      </div>
       <div class="card-actions">
         <button id="edit-save">save</button>
         <button id="edit-delete" class="danger">delete</button>

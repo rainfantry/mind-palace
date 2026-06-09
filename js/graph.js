@@ -1,61 +1,92 @@
 // ---------------------------------------------------------------------------
-// graph.js — the network. Edges + the force simulation that makes the swarm
-// behave like a connected web instead of a loose cloud.
+// graph.js — the network: edges + the force simulation.
 //
-// This is the "drag one, the whole sphere follows" bit. Linked nodes are joined
-// by springs; everything pushes apart a little so they don't pile up; a gentle
-// pull keeps the whole thing centred. Grab a node and the sim leaves it pinned
-// to your finger while its neighbours get yanked along on elastic.
-//
-// Small node counts, so the lazy O(n^2) repulsion is fine. If you ever load
-// hundreds, swap the repulsion loop for a grid/quadtree.
+// Layout has STRUCTURE now, not just a soup:
+//   - a CENTER node (the persona / subject) is pinned at the origin — the radial
+//     point everything hangs off.
+//   - every category gets its own DIRECTION on the sphere (a sector), so nodes
+//     group with their own kind: corruption clusters one way, trauma another,
+//     defense another. The force sphere is the reference frame.
+//   - links (springs) + repulsion still shape the detail inside each group, and
+//     grabbing/brushing still shoves things around — the layout just re-settles.
 // ---------------------------------------------------------------------------
 
 import * as THREE from "three";
 
-// Tuning knobs. Fiddle these to change the feel.
-const SPRING_K = 0.025;     // how hard linked nodes pull together
-const REST_LENGTH = 6;      // how far apart linked nodes want to sit
-const REPULSION = 22;       // how hard every node shoves every other one away
-const CENTERING = 0.004;    // gentle pull back toward the middle
-const DAMPING = 0.86;       // velocity bleed — lower = more sluggish, higher = bouncier
-const MAX_SPEED = 2.5;      // clamp so nothing rockets off into the void
+const SPRING_K = 0.025;
+const REST_LENGTH = 5.5;
+const REPULSION = 18;
+const CENTERING = 0.002;     // weak — grouping does most of the centring now
+const DAMPING = 0.86;
+const MAX_SPEED = 2.5;
+
+// category grouping
+const GROUP_RADIUS = 11;     // how far each category's sector sits from the centre
+const GROUP_K = 0.02;        // how strongly a node is pulled to its category sector
 
 export class Graph {
   constructor(stage, swarm) {
     this.stage = stage;
     this.swarm = swarm;
+    this.edgeLines = null;
+    this.edges = [];
+    this.center = null;            // the pinned centre orb
+    this.categoryAnchors = {};     // tag -> unit direction on the sphere
 
-    this.edgeLines = null;   // the THREE object that draws all the lines
-    this.edges = [];         // [{ a: orb, b: orb }]
-
+    this._findCenter();
+    this._buildCategoryAnchors();
     this.rebuildEdges();
-
-    // Run the sim every frame.
     this.stage.onTick((dt) => this._tick(dt));
   }
 
-  // (Re)build the edge list + line geometry from whatever links the nodes have.
-  // Call this after adding/removing/editing nodes.
+  // The centre is the persona/subject node if there is one. Pin it at the origin.
+  _findCenter() {
+    this.center =
+      this.swarm.orbs.find((o) => o.userData.memory.tag === "persona") ||
+      this.swarm.orbs.find((o) => o.userData.memory.id === "subject") ||
+      null;
+    if (this.center) {
+      this.center.position.set(0, 0, 0);
+      this.center.userData.velocity.set(0, 0, 0);
+    }
+  }
+
+  // Spread each category evenly over a sphere (fibonacci) so groups don't overlap.
+  _buildCategoryAnchors() {
+    const cats = [...new Set(this.swarm.orbs.map((o) => o.userData.memory.tag))]
+      .filter((t) => t !== "persona"); // centre doesn't get a sector
+    const n = Math.max(cats.length, 1);
+    const anchors = {};
+    cats.forEach((cat, i) => {
+      const y = 1 - (i / Math.max(n - 1, 1)) * 2;          // 1 .. -1
+      const r = Math.sqrt(Math.max(0, 1 - y * y));
+      const phi = i * Math.PI * (3 - Math.sqrt(5));          // golden angle
+      anchors[cat] = new THREE.Vector3(Math.cos(phi) * r, y, Math.sin(phi) * r);
+    });
+    this.categoryAnchors = anchors;
+  }
+
+  // Rebuild after add/remove/edit. Refreshes centre, sectors, and edge lines.
   rebuildEdges() {
+    this._findCenter();
+    this._buildCategoryAnchors();
+
     if (this.edgeLines) {
       this.stage.world.remove(this.edgeLines);
       this.edgeLines.geometry.dispose();
       this.edgeLines.material.dispose();
     }
 
-    // Map id -> orb so we can resolve links.
     const byId = new Map();
     for (const orb of this.swarm.orbs) byId.set(orb.userData.memory.id, orb);
 
-    // Collect unique pairs (dedupe a<->b vs b<->a).
     const seen = new Set();
     this.edges = [];
     for (const orb of this.swarm.orbs) {
       const links = orb.userData.memory.links || [];
       for (const otherId of links) {
         const other = byId.get(otherId);
-        if (!other) continue; // link points at something that isn't here — skip
+        if (!other) continue;
         const key = [orb.userData.memory.id, otherId].sort().join("::");
         if (seen.has(key)) continue;
         seen.add(key);
@@ -63,34 +94,40 @@ export class Graph {
       }
     }
 
-    // Build one LineSegments object holding every edge (two verts each).
     const positions = new Float32Array(this.edges.length * 2 * 3);
     const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-    const mat = new THREE.LineBasicMaterial({
-      color: 0x4fd1ff,
-      transparent: true,
-      opacity: 0.28,
-    });
+    const mat = new THREE.LineBasicMaterial({ color: 0x4fd1ff, transparent: true, opacity: 0.28 });
     this.edgeLines = new THREE.LineSegments(geo, mat);
-    this.edgeLines.frustumCulled = false; // verts move every frame, don't cull
+    this.edgeLines.frustumCulled = false;
     this.stage.world.add(this.edgeLines);
   }
 
   _tick(dt) {
     const orbs = this.swarm.orbs;
     if (orbs.length === 0) return;
-
-    // clamp dt so a stutter doesn't blow the sim up
     const step = Math.min(dt, 0.05);
 
-    // --- accumulate forces ---
+    // keep the centre nailed to the origin
+    if (this.center) {
+      this.center.position.set(0, 0, 0);
+      this.center.userData.velocity.set(0, 0, 0);
+    }
+
+    // forces
     for (const orb of orbs) {
-      if (orb.userData.pinned) continue; // held by a finger — don't push it
+      if (orb.userData.pinned || orb === this.center) continue;
       const force = new THREE.Vector3();
 
-      // centre pull
+      // weak pull to centre (stops strays drifting off)
       force.add(orb.position.clone().multiplyScalar(-CENTERING));
+
+      // pull toward this node's CATEGORY sector on the sphere → grouping
+      const anchor = this.categoryAnchors[orb.userData.memory.tag];
+      if (anchor) {
+        const target = anchor.clone().multiplyScalar(GROUP_RADIUS);
+        force.add(target.sub(orb.position).multiplyScalar(GROUP_K));
+      }
 
       // repulsion from everyone else
       for (const other of orbs) {
@@ -103,24 +140,22 @@ export class Graph {
       orb.userData.velocity.add(force.multiplyScalar(step));
     }
 
-    // --- springs along edges ---
+    // springs along links
     for (const { a, b } of this.edges) {
       const delta = b.position.clone().sub(a.position);
       const dist = Math.max(delta.length(), 0.001);
       const pull = delta.normalize().multiplyScalar((dist - REST_LENGTH) * SPRING_K);
-      if (!a.userData.pinned) a.userData.velocity.add(pull);
-      if (!b.userData.pinned) b.userData.velocity.sub(pull);
+      if (!a.userData.pinned && a !== this.center) a.userData.velocity.add(pull);
+      if (!b.userData.pinned && b !== this.center) b.userData.velocity.sub(pull);
     }
 
-    // --- integrate ---
+    // integrate
     for (const orb of orbs) {
-      if (orb.userData.pinned) { orb.userData.velocity.set(0, 0, 0); continue; }
+      if (orb.userData.pinned || orb === this.center) continue;
       const v = orb.userData.velocity;
       v.multiplyScalar(DAMPING);
       if (v.length() > MAX_SPEED) v.setLength(MAX_SPEED);
-      orb.position.add(v.clone().multiplyScalar(step * 60)); // *60 so it moves at a sane pace
-
-      // drag the floating label along with its orb
+      orb.position.add(v.clone().multiplyScalar(step * 60));
       if (orb.userData.label) {
         orb.userData.label.position.copy(orb.position).add(new THREE.Vector3(0, 1.6, 0));
       }
@@ -129,7 +164,6 @@ export class Graph {
     this._updateEdgeGeometry();
   }
 
-  // Push current orb positions into the line geometry so the edges follow.
   _updateEdgeGeometry() {
     if (!this.edgeLines) return;
     const pos = this.edgeLines.geometry.attributes.position;

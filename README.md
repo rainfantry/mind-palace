@@ -86,11 +86,13 @@ webcam ─▶ hands.js ─▶ interaction.js ─▶ scene/nodes/graph (the 3D) �
 3. **`scene.js` / `nodes.js` / `graph.js`** are the 3D:
    - `scene.js` — the three.js world (camera, lights, stars, render loop).
    - `nodes.js` — turns each memory into a glowing orb + floating label.
-   - `graph.js` — draws the edges and runs a tiny **force simulation**: linked orbs
-     are joined by springs, every orb gently pushes the others away, and a weak pull
-     keeps the whole thing centred. Grab an orb and it gets *pinned* to your finger,
-     so dragging it stretches its connected cluster like a web. This is the same idea
-     as a d3 force graph, hand-rolled so you can see every line of it.
+   - `graph.js` — draws the edges and runs a tiny **force simulation** with
+     *structure*: the **persona/subject node is pinned at the centre** as the radial
+     anchor, and **each category gets its own sector on the sphere**, so nodes group
+     with their own kind instead of floating randomly. Springs (links) and repulsion
+     shape the detail inside each group. Grab or brush an orb and it gets shoved; the
+     sim re-settles it back into its group. Same idea as a d3 force graph, hand-rolled
+     so you can see every line of it.
 
 4. **`voice.js`** reads a memory aloud. If `js/voice.local.js` (gitignored) holds an
    ElevenLabs key + voice ID, it's your cloned voice; otherwise it's the browser's

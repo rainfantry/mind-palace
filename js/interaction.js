@@ -7,22 +7,21 @@
 //   - PINCH and hold over an orb     -> grab it; while pinched, drag it. The orb
 //                                       is pinned, so its linked cluster gets
 //                                       dragged along on elastic. Release = drop.
-//   - OPEN your fingers wide (spread / open-palm) on an orb -> EXPAND it: open the
+//   - TWO FINGERS (index + middle, a V / Victory) on an orb -> EXPAND it: open the
 //                                       memory card and read it aloud.
 //
-// So: pinch = move it, open your hand = pop it open. Two hands work independently.
+// Pinch (thumb+index) and the two-finger V (index+middle) use different fingers,
+// so drag and open never get confused. Two hands work independently.
 // Bottom-right readout shows what each hand is doing.
 // ---------------------------------------------------------------------------
 
 import * as THREE from "three";
 
-// Fingers counted "wide open" past this thumb-to-index distance. Pinch closed is
-// well under PINCH_THRESHOLD (see hands.js, ~0.06), so this is a clear gap.
-const SPREAD_THRESHOLD = 0.22;
+// Index↔middle fingertip gap past this counts as a "two-finger open" (the Victory
+// gesture also triggers it). Tune with the `spread` value in the readout.
+const TWO_FINGER_SPREAD = 0.11;
 
-// Only treat an open as "expand" if it happened shortly after a pinch, or it's a
-// clean open-palm. And don't let it re-fire faster than this.
-const PINCH_MEMORY_MS = 800;
+// Don't let an expand re-fire faster than this.
 const EXPAND_DEBOUNCE_MS = 700;
 
 export class Interaction {
@@ -45,7 +44,7 @@ export class Interaction {
     document.body.appendChild(crosshair);
     const state = {
       crosshair, grabbed: null, hovered: null,
-      wasPinching: false, pinchedAt: 0, lastExpand: 0,
+      wasPinching: false, lastExpand: 0,
     };
     this.handStates[i] = state;
     return state;
@@ -67,7 +66,7 @@ export class Interaction {
 
   _processHand(state, hand) {
     const now = performance.now();
-    const { cursor, pinch, pinchDist, gesture } = hand;
+    const { cursor, pinch, spreadDist = 0, gesture } = hand;
 
     this._moveCrosshair(state, cursor, pinch);
     this.pointer.set(cursor.x, cursor.y);
@@ -75,7 +74,7 @@ export class Interaction {
     const hit = this._raycastOrb();
     const justPinched = pinch && !state.wasPinching;
 
-    // ---- PINCH = grab + drag ----
+    // ---- PINCH (thumb+index) = grab + drag ----
     if (justPinched && hit) this._grab(state, hit);
     if (state.grabbed) {
       if (pinch) {
@@ -84,18 +83,14 @@ export class Interaction {
         this._release(state);           // let go: drop it
       }
     }
-    if (pinch) state.pinchedAt = now;     // remember we were pinching (for the open-to-expand)
 
-    // ---- OPEN FINGERS = expand + read ----
-    const openedFromPinch = !pinch && pinchDist >= SPREAD_THRESHOLD &&
-                            (now - state.pinchedAt < PINCH_MEMORY_MS);
-    const openPalm = gesture === "Open_Palm";
-    if ((openedFromPinch || openPalm) && (now - state.lastExpand > EXPAND_DEBOUNCE_MS)) {
+    // ---- TWO FINGERS (index+middle V) = expand + read ----
+    const twoFingerOpen = gesture === "Victory" || spreadDist >= TWO_FINGER_SPREAD;
+    if (twoFingerOpen && (now - state.lastExpand > EXPAND_DEBOUNCE_MS)) {
       const target = state.grabbed || hit;
       if (target) {
         this._expand(state, target);
         state.lastExpand = now;
-        state.pinchedAt = 0;
       }
     }
 
@@ -189,7 +184,7 @@ export class Interaction {
       const title = s?.grabbed?.userData?.memory?.title ?? s?.hovered?.userData?.memory?.title ?? "";
       lines.push(
         `H${i} ${h.handedness.padEnd(5)} ${h.gesture}`,
-        `   pinch ${h.pinchDist.toFixed(2)} ${h.pinch ? "●CLOSED→drag" : "○open"}`,
+        `   pinch ${h.pinchDist.toFixed(2)} ${h.pinch ? "●drag" : "○"}  spread ${(h.spreadDist ?? 0).toFixed(2)}`,
         `   x ${h.cursor.x.toFixed(2)}  y ${h.cursor.y.toFixed(2)}`,
         `   → ${doing}${title ? ": " + title : ""}`
       );

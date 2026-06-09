@@ -1,35 +1,27 @@
 // ---------------------------------------------------------------------------
 // hands.js — the webcam hand tracker + gesture reader.
 //
-// Upgraded from plain landmarks to MediaPipe's GESTURE RECOGNIZER. Same 21
-// points per hand, but now it also names the shape your hand is making —
-// Closed_Fist, Open_Palm, Pointing_Up, Thumb_Up, Victory, etc. And it tracks
-// TWO hands so you can grab with both.
+// MediaPipe Gesture Recognizer. Per hand we read THREE things off the landmarks:
+//   - cursor    : where the index fingertip points (NDC -1..1)
+//   - pinch     : thumb tip ↔ index tip close together  (drives DRAG)
+//   - spread    : index tip ↔ MIDDLE tip apart          (drives EXPAND/read)
+// plus the named gesture (Victory, Open_Palm, …).
 //
-// Every frame it calls back with { hands: [...] }, one entry per hand seen:
-//   {
-//     cursor:    { x, y }   index fingertip in NDC (-1..1), or where you point
-//     pinch:     bool       thumb + index touching
-//     pinchDist: number     raw distance (for the readout / tuning)
-//     gesture:   string      "Open_Palm" | "Closed_Fist" | "None" | ...
-//     handedness:string      "Left" | "Right" (or "Mouse" in fallback)
-//   }
-// Empty array = nothing in view.
+// Pinch and spread live on different finger pairs on purpose, so they never get
+// confused: thumb+index = grab, two-finger V = open. Tracks two hands.
 //
-// No camera? Falls back to the mouse, one "hand", same shape — so it all still
-// runs without you waving your arms about.
+// No camera? Falls back to the mouse: move = point, hold left = pinch/drag,
+// right-click = the open/expand.
 // ---------------------------------------------------------------------------
 
 import { GestureRecognizer, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0";
 
-// Fixed by the model — don't touch.
-const INDEX_TIP = 8;
+// Landmark indices — fixed by the model.
 const THUMB_TIP = 4;
+const INDEX_TIP = 8;
+const MIDDLE_TIP = 12;
 
-// Pinch sensitivity. Bigger = easier to trigger, smaller = needs a tighter pinch.
-const PINCH_THRESHOLD = 0.06;
-
-// How many hands to track. Two so you can multi-select.
+const PINCH_THRESHOLD = 0.06; // thumb↔index under this = pinching
 const MAX_HANDS = 2;
 
 export class HandTracker {
@@ -60,11 +52,11 @@ export class HandTracker {
       this.video.srcObject = stream;
       await this.video.play();
 
-      setStatus("tracking live — two hands, gestures on");
+      setStatus("tracking live — pinch to drag, two-finger V to open");
       this._loop();
     } catch (err) {
       console.warn("tracking didn't start, mouse fallback:", err);
-      setStatus("no camera — mouse fallback (move = point, hold click = pinch)");
+      setStatus("no camera — mouse fallback (move=point, hold-left=drag, right-click=open)");
       this._startMouse();
     }
   }
@@ -81,51 +73,60 @@ export class HandTracker {
     tick();
   }
 
-  // Turn the raw MediaPipe result into our tidy per-hand list.
   _readHands(res) {
     const out = [];
     const allLandmarks = res.landmarks || [];
 
     for (let i = 0; i < allLandmarks.length; i++) {
       const hand = allLandmarks[i];
-      const tip = hand[INDEX_TIP];
-      const thumb = hand[THUMB_TIP];
+      const indexTip = hand[INDEX_TIP];
+      const thumbTip = hand[THUMB_TIP];
+      const middleTip = hand[MIDDLE_TIP];
 
       // Mirror x (webcam shown like a mirror), flip y so up is up. NDC -1..1.
-      const cursor = { x: 1 - 2 * tip.x, y: 1 - 2 * tip.y };
+      const cursor = { x: 1 - 2 * indexTip.x, y: 1 - 2 * indexTip.y };
 
-      const pinchDist = Math.hypot(tip.x - thumb.x, tip.y - thumb.y);
+      // thumb ↔ index = pinch (drag)
+      const pinchDist = Math.hypot(indexTip.x - thumbTip.x, indexTip.y - thumbTip.y);
       const pinch = pinchDist < PINCH_THRESHOLD;
 
-      // gestures/handednesses are arrays-of-arrays, top candidate is [0].
+      // index ↔ middle = the two-finger spread (open / expand)
+      const spreadDist = Math.hypot(indexTip.x - middleTip.x, indexTip.y - middleTip.y);
+
       const gesture = res.gestures?.[i]?.[0]?.categoryName ?? "None";
       const handedness = res.handednesses?.[i]?.[0]?.categoryName ?? "?";
 
-      out.push({ cursor, pinch, pinchDist, gesture, handedness });
+      out.push({ cursor, pinch, pinchDist, spreadDist, gesture, handedness });
     }
     return out;
   }
 
-  // Mouse stand-in so the thing's testable with no webcam.
+  // Mouse stand-in. Left-drag = pinch, right-click = the open gesture.
   _startMouse() {
     let pinching = false;
-    const emit = (e) => {
-      const cursor = {
-        x: (e.clientX / window.innerWidth) * 2 - 1,
-        y: -((e.clientY / window.innerHeight) * 2 - 1),
-      };
+    let last = { x: 0, y: 0 };
+    const ndc = (e) => ({
+      x: (e.clientX / window.innerWidth) * 2 - 1,
+      y: -((e.clientY / window.innerHeight) * 2 - 1),
+    });
+    const emit = (gesture = "None") => {
       this.onFrame({
         hands: [{
-          cursor,
+          cursor: last,
           pinch: pinching,
           pinchDist: pinching ? 0 : 1,
-          gesture: pinching ? "Pinch(mouse)" : "None",
+          spreadDist: 0,
+          gesture,
           handedness: "Mouse",
         }],
       });
     };
-    window.addEventListener("mousemove", emit);
-    window.addEventListener("mousedown", (e) => { pinching = true; emit(e); });
-    window.addEventListener("mouseup", (e) => { pinching = false; emit(e); });
+    window.addEventListener("mousemove", (e) => { last = ndc(e); emit(); });
+    window.addEventListener("mousedown", (e) => {
+      if (e.button === 0) { pinching = true; emit(); }
+      else if (e.button === 2) { emit("Victory"); } // right-click = open/expand
+    });
+    window.addEventListener("mouseup", (e) => { if (e.button === 0) { pinching = false; emit(); } });
+    window.addEventListener("contextmenu", (e) => e.preventDefault());
   }
 }

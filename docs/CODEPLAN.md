@@ -14,7 +14,7 @@ for last on purpose.
 ### Phase B — two hands + gestures ✅
 - swapped HandLandmarker → GestureRecognizer (fist, open palm, point, …)
 - two-hand tracking = multi-select
-- gesture model: **pinch + hold = grab/drag**, **open fingers = expand + read**
+- gesture model: **pinch (thumb+index) = grab/drag**, **two-finger V (index+middle) = expand + read**
 - bottom-right live detection readout
 
 ### Phase C — the cloned voice ✅

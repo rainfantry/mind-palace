@@ -2,8 +2,8 @@
 
 A gesture-driven 3D interface to a personal memory graph. Wave your hand at the
 webcam, reach into a constellation of your own memories floating in space, **pinch**
-one to drag it around, **open your fingers** to pop it open and hear it read back in
-your own cloned voice — or talk to a local AI about it.
+one to drag it around, flash **two fingers** (a peace sign) to pop it open and hear it
+read back in your own cloned voice — or talk to a local AI about it.
 
 This is a learning project. It's deliberately built with **no framework and no build
 step** so every moving part is visible and hackable. This README explains how it's
@@ -29,10 +29,10 @@ Open **http://localhost:8000** in Chrome/Edge and allow the camera.
 | Do this | Get this |
 |---------|----------|
 | **Point** (index finger) | a crosshair tracks your fingertip |
-| **Pinch + hold** on an orb | grab it and drag — linked orbs follow on elastic |
-| **Open your fingers wide** on an orb | expand it: card opens + read aloud |
+| **Pinch + hold** (thumb + index) on an orb | grab it and drag — linked orbs follow on elastic |
+| **Two fingers** (index + middle, a V) on an orb | expand it: card opens + read aloud |
 | **Two hands** | two independent cursors — drag two clusters at once |
-| **Mouse fallback** | no camera? move = point, hold left-click = pinch |
+| **Mouse fallback** | no camera? move = point, hold left-click = pinch, right-click = open |
 
 Bottom-right is a **live detection readout** — per hand it shows handedness,
 gesture, pinch distance, fingertip coords and what it's doing. That's your window

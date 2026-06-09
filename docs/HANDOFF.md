@@ -94,11 +94,13 @@ docs/                   these docs
 
 Set in `js/interaction.js`. If you change it, update this list.
 - **point** (index out) → crosshair tracks the fingertip
-- **pinch + hold** over an orb → grab + drag it (pinned; linked cluster follows)
-- **open fingers wide / open palm** on an orb → expand: open the card + read aloud
+- **pinch + hold** (thumb + index) over an orb → grab + drag it (pinned; cluster follows)
+- **two fingers** (index + middle V / `Victory` gesture) on an orb → expand: card + read
 - two hands = two independent cursors
-- thresholds: `PINCH_THRESHOLD` (hands.js, ~0.06) for pinch, `SPREAD_THRESHOLD`
-  (interaction.js, ~0.22) for the open-to-expand
+- pinch and the two-finger open are on different finger pairs so they never clash
+- thresholds: `PINCH_THRESHOLD` (hands.js, ~0.06) for pinch, `TWO_FINGER_SPREAD`
+  (interaction.js, ~0.11) for the index↔middle open. Both fed by per-hand values in
+  the readout (`pinch` / `spread`) for tuning.
 
 ## Current state (as of this handoff)
 

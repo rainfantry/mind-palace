@@ -3,6 +3,9 @@
 data/memories.local.json
 data/*.local.json
 
+# YOUR ELEVENLABS KEY LIVES HERE AND NEVER GETS COMMITTED.
+js/voice.local.js
+
 # junk
 node_modules/
 .DS_Store

@@ -86,7 +86,7 @@ Everything else does exactly one job and says what it does at the top:
 
 ## Where it's going
 
-- [ ] Swap the browser voice in `js/voice.js` for **SERVITOR's real cloned voice** (the hook's already commented in there).
+- [x] **Cloned voice wired in.** Put your ElevenLabs key + voice ID in `js/voice.local.js` (gitignored — copy `js/voice.local.example.js`). With it, memories are read in your real voice; without it, browser voice. That file is the *only* place a key lives, and it never gets committed.
 - [ ] Lay the orbs out by **meaning** instead of just date — embed the memories and cluster the related ones together.
 - [ ] Two-handed gestures — zoom, rotate the whole swarm.
 - [ ] Point it at **survey data** — same interface, but you're grabbing a 3D site model instead of a memory. That's the one that matters.

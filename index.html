@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<!--
+  MIND PALACE — gesture-driven memory twin.
+  Wave your hand at the webcam, grab a memory out of the air, hear it read back.
+
+  This is the spine. It works as-is. Everything good bolts on from here.
+  If you're reading this in the future George — start at js/main.js, that's the
+  switchboard. Every other file does one job and says what it does up top.
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MIND PALACE</title>
+  <link rel="stylesheet" href="css/style.css" />
+
+  <!-- three.js comes in as a proper ES module so the imports in js/ just work.
+       Pinning the version on purpose — don't want a silent upstream change
+       cooking the whole thing one morning. -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <!-- The webcam feed. Mirrored in CSS so it feels like a mirror, not a stranger
+       staring back. The hand tracker reads from this every frame. -->
+  <video id="webcam" autoplay playsinline></video>
+
+  <!-- three.js paints the 3D memories onto this. -->
+  <canvas id="scene"></canvas>
+
+  <!-- Little status line bottom-left so you always know what the machine's doing:
+       loading, camera on, hand seen, mouse fallback, whatever. -->
+  <div id="status">booting…</div>
+
+  <!-- The panel that slides in when you grab a memory and open it. -->
+  <div id="memory-card" class="hidden">
+    <button id="card-close" title="shut it">✕</button>
+    <div id="card-date"></div>
+    <h2 id="card-title"></h2>
+    <p id="card-body"></p>
+    <button id="card-speak">▶ read it to me</button>
+  </div>
+
+  <!-- A crosshair that follows your fingertip so you can see where you're pointing. -->
+  <div id="cursor"></div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

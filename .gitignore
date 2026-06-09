@@ -1,0 +1,12 @@
+# THE REAL ARCHIVE NEVER LEAVES THIS MACHINE.
+# Your actual history — the heavy stuff — goes in here and git never sees it.
+data/memories.local.json
+data/*.local.json
+
+# junk
+node_modules/
+.DS_Store
+Thumbs.db
+*.log
+.vscode/
+.idea/

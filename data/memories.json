@@ -1,0 +1,61 @@
+{
+  "_comment": "The public seed. Safe stuff only — milestones, builds, wins. The real archive (the heavy years) lives in data/memories.local.json which is gitignored and loads OVER the top of this. Add nodes by hand: each one needs id, date, title, body, tag. That's it.",
+  "nodes": [
+    {
+      "id": "tafe-done",
+      "date": "2026-05",
+      "title": "TAFE Cert IV — done",
+      "body": "Eighteen weeks of IT programming, finished. C#, web, SQL. The credential layer. Not the destination, the key that unlocks the door.",
+      "tag": "milestone"
+    },
+    {
+      "id": "radon-pipeline",
+      "date": "2026-04",
+      "title": "RADON FID pipeline",
+      "body": "DXF sanitiser, MAGNET CSV scraper, offset calculators, a find-and-replace LISP doing the work of an afternoon in one keystroke. Surveying drudgery, automated. First real tool that earned its keep.",
+      "tag": "build"
+    },
+    {
+      "id": "sdxl-lora",
+      "date": "2026-05",
+      "title": "Cloned my own face",
+      "body": "Trained an SDXL LoRA on myself on a RunPod 3090. Typed a prompt, my face came back out of the noise. First time the machine could draw me from nothing.",
+      "tag": "build"
+    },
+    {
+      "id": "voice-clone",
+      "date": "2026-05",
+      "title": "Cloned my own voice",
+      "body": "ElevenLabs voice clone wired into TalkyTalk and SERVITOR. The bot stopped sounding like a robot and started sounding like me. Uncanny the first time it spoke.",
+      "tag": "build"
+    },
+    {
+      "id": "servitor",
+      "date": "2026-05",
+      "title": "SERVITOR woke up",
+      "body": "A Discord agent that takes on any personality on command and talks in my voice. The machine spirit got a mouth. Replaced the old mrrobot rig entirely.",
+      "tag": "build"
+    },
+    {
+      "id": "radon-return",
+      "date": "2026-05-24",
+      "title": "RADON return — handshake locked",
+      "body": "Four days a week, drafter/technician, with Raed. 'I want a companion. Someone to entertain me but get the work done.' Not theoretical anymore. The path made real.",
+      "tag": "milestone"
+    },
+    {
+      "id": "node-twin",
+      "date": "2026-06",
+      "title": "Neural net of myself",
+      "body": "Built a Node.js neural network modelled on me, to change theatres when the boredom hit. Another organ of the twin, built and set down.",
+      "tag": "build"
+    },
+    {
+      "id": "mind-palace",
+      "date": "2026-06-10",
+      "title": "Gave the ghost hands",
+      "body": "MediaPipe hand-tracking plus three.js. The fragments — the face, the voice, the agent, the memory — finally get a body you can reach into. This thing. The one you're standing in right now.",
+      "tag": "milestone"
+    }
+  ]
+}

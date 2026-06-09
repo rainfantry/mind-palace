@@ -26,8 +26,9 @@ const BRUSH_PUSH = 0.5;           // radial shove away from the fingertip
 const BRUSH_KNOCK = 6.0;          // how much of the finger's motion transfers
 
 // navigation
-const ORBIT_K = 1.6;              // open-palm orbit sensitivity
+const ORBIT_K = 1.6;              // open-palm (single hand) orbit sensitivity
 const ZOOM_K = 34;                // two-hand zoom sensitivity
+const NAV_ORBIT_K = 2.2;          // two-hand orbit (midpoint) sensitivity
 const ZOOM_MIN = 8, ZOOM_MAX = 70;
 
 export class Interaction {
@@ -40,7 +41,10 @@ export class Interaction {
     this.raycaster = new THREE.Raycaster();
     this.pointer = new THREE.Vector2();
     this.handStates = [];
-    this.lastZoomSpan = null;   // distance between two hands last frame
+    // two-hand navigation memory (distance / midpoint / angle last frame)
+    this.lastZoomSpan = null;
+    this.lastMid = null;
+    this.lastAngle = null;
   }
 
   _stateFor(i) {
@@ -60,8 +64,22 @@ export class Interaction {
   update(frame) {
     const hands = frame.hands || [];
 
-    this._handleZoom(hands);
-    hands.forEach((hand, i) => this._processHand(this._stateFor(i), hand));
+    if (hands.length === 2) {
+      // BOTH HANDS = navigate the whole sphere: zoom + rotate. Node manipulation
+      // is suspended so a stray pinch doesn't grab mid-flight.
+      this._twoHandNav(hands);
+      hands.forEach((hand, i) => {
+        const s = this._stateFor(i);
+        this._release(s);
+        this._setHover(s, null);
+        this._moveCrosshair(s, hand.cursor, hand.pinch);
+        s.mode = "navigate";
+        s.brushPrev = null;
+      });
+    } else {
+      this.lastZoomSpan = this.lastMid = this.lastAngle = null;
+      hands.forEach((hand, i) => this._processHand(this._stateFor(i), hand));
+    }
 
     for (let i = hands.length; i < this.handStates.length; i++) {
       const s = this.handStates[i];
@@ -74,20 +92,39 @@ export class Interaction {
     this._renderHud(hands);
   }
 
-  // Two hands present → use the gap between them as a zoom dial.
-  _handleZoom(hands) {
-    if (hands.length === 2) {
-      const a = hands[0].cursor, b = hands[1].cursor;
-      const span = Math.hypot(a.x - b.x, a.y - b.y);
-      if (this.lastZoomSpan != null) {
-        const delta = span - this.lastZoomSpan;       // spread apart = zoom in
-        const cam = this.stage.camera;
-        cam.position.z = THREE.MathUtils.clamp(cam.position.z - delta * ZOOM_K, ZOOM_MIN, ZOOM_MAX);
-      }
-      this.lastZoomSpan = span;
-    } else {
-      this.lastZoomSpan = null;
+  // Two hands → zoom (gap), orbit (midpoint moves), roll (the line between them twists).
+  _twoHandNav(hands) {
+    const a = hands[0].cursor, b = hands[1].cursor;
+    const span = Math.hypot(a.x - b.x, a.y - b.y);
+    const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    const angle = Math.atan2(b.y - a.y, b.x - a.x);
+
+    const cam = this.stage.camera;
+    const w = this.stage.world;
+
+    // ZOOM — hands apart = closer
+    if (this.lastZoomSpan != null) {
+      cam.position.z = THREE.MathUtils.clamp(
+        cam.position.z - (span - this.lastZoomSpan) * ZOOM_K, ZOOM_MIN, ZOOM_MAX
+      );
     }
+    // ORBIT — drag both hands together to spin the sphere
+    if (this.lastMid) {
+      w.rotation.y += (mid.x - this.lastMid.x) * NAV_ORBIT_K;
+      w.rotation.x = THREE.MathUtils.clamp(
+        w.rotation.x - (mid.y - this.lastMid.y) * NAV_ORBIT_K, -1.2, 1.2
+      );
+    }
+    // ROLL — twist the two hands relative to each other
+    if (this.lastAngle != null) {
+      let dA = angle - this.lastAngle;
+      dA = Math.atan2(Math.sin(dA), Math.cos(dA)); // shortest way round
+      w.rotation.z += dA;
+    }
+
+    this.lastZoomSpan = span;
+    this.lastMid = mid;
+    this.lastAngle = angle;
   }
 
   _processHand(state, hand) {
@@ -253,8 +290,8 @@ export class Interaction {
       this.ui.setHud("no hands detected\n(point at the camera)");
       return;
     }
-    const zoom = hands.length === 2 ? "  [ZOOM]" : "";
-    const lines = [`hands: ${hands.length}${zoom}`];
+    const nav = hands.length === 2 ? "  [NAV: zoom + rotate]" : "";
+    const lines = [`hands: ${hands.length}${nav}`];
     hands.forEach((h, i) => {
       const s = this.handStates[i];
       const title = s?.grabbed?.userData?.memory?.title ?? s?.hovered?.userData?.memory?.title ?? "";

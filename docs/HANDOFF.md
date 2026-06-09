@@ -99,7 +99,8 @@ Set in `js/interaction.js`. If you change it, update this list.
   shorter than `TAP_MS` with no drag = **select** (open + read)
 - **two fingers** (index + middle V / `Victory`) on an orb → expand: card + read
 - **open palm** + move → orbit the whole world group (`_orbit`)
-- **two hands** spread/close → zoom the camera (`_handleZoom`)
+- **two hands** → navigate: spread/close = zoom, move = orbit, twist = roll (`_twoHandNav`).
+  Single-hand node manipulation is suspended while two hands are up.
 - thresholds in interaction.js: `TWO_FINGER_SPREAD` ~0.11, `TAP_MS` ~260,
   `BRUSH_RADIUS/PUSH/KNOCK`, `ORBIT_K`, `ZOOM_K`. Readout shows `pinch`/`spread` for tuning.
 

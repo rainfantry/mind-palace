@@ -2,6 +2,12 @@
 
 <p align="center">
   <img src="assets/board-screenshot.png" alt="The Mind Palace running — a constellation of project memory-orbs connected by lines, floating over the live webcam feed" width="820">
+  <br><sub><b>Real — the Mind Palace, running in a browser.</b></sub>
+</p>
+
+<p align="center">
+  <img src="assets/inspiration.png" alt="The sci-fi inspiration — a person sculpting a glowing holographic data-sphere in mid-air with both hands" width="440">
+  <br><sub><b>The dream it's chasing.</b></sub>
 </p>
 
 A gesture-driven 3D interface to a personal memory graph. Wave your hand at the

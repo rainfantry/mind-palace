@@ -1,5 +1,9 @@
 # MIND PALACE
 
+<p align="center">
+  <img src="assets/board-screenshot.png" alt="The Mind Palace running — a constellation of project memory-orbs connected by lines, floating over the live webcam feed" width="820">
+</p>
+
 A gesture-driven 3D interface to a personal memory graph. Wave your hand at the
 webcam, reach into a constellation of your own memories floating in space, **pinch**
 one to drag it around, flash **two fingers** (a peace sign) to pop it open and hear it
@@ -19,10 +23,15 @@ The webcam needs a real server (`file://` can't touch the camera or load modules
 
 ```bash
 cd mind-palace
-python -m http.server 8000      # or double-click serve.bat on Windows
+python server.py                # or double-click serve.bat on Windows
 ```
 
 Open **http://localhost:8000** in Chrome/Edge and allow the camera.
+
+`server.py` is a tiny stdlib server — no pip, no build step. It serves the files
+*and* adds the two endpoints the "open a linked file / show a site preview"
+feature needs (`/open`, `/preview`). It binds to `127.0.0.1` only, on purpose:
+`/open` launches things on your machine, so it must never be reachable off the box.
 
 ## Controls
 
@@ -49,10 +58,12 @@ Everything hangs off **one data structure: a graph of memory nodes**. A node is 
 
 ```json
 { "id": "servitor", "date": "2026-05", "title": "…", "body": "…",
-  "tag": "build", "links": ["voice-clone", "node-twin"] }
+  "tag": "build", "links": ["voice-clone", "node-twin"],
+  "path": "C:\\…\\folder", "url": "https://…" }
 ```
 
-`links` are edges to other nodes. That's the whole model. Orbs, lines, the physics,
+`links` are edges to other nodes. `path` and `url` are optional — a file/folder on
+disk or a website the node points at, openable from its card. That's the whole model. Orbs, lines, the physics,
 the voice, the AI chat — all of it is just different ways of looking at, or acting
 on, that list of nodes.
 
@@ -117,6 +128,10 @@ webcam ─▶ hands.js ─▶ interaction.js ─▶ scene/nodes/graph (the 3D) �
 So the public repo only ever ships safe demo data; your real history and any keys
 stay on your machine.
 
+If your local file sets `"replaceSeed": true` at the top level, the demo seed is
+dropped entirely and **only your own graph shows** — handy when you've turned the
+palace into a real working board and don't want the sample nodes cluttering it.
+
 ### The "seams" (where bigger pieces plug in later)
 
 Two files are written as swappable seams:
@@ -132,6 +147,7 @@ data) attach without rewrites.
 ## File map
 
 ```
+server.py               local server: static + /open + /preview — run THIS
 index.html              entry + importmap + all the DOM
 css/style.css           all styling
 data/memories.json      public seed
@@ -147,6 +163,7 @@ js/voice.js             text-to-speech (cloned voice / browser)
 js/agent.js             local-model chat
 js/agent.config.js      local-model settings
 js/editor.js            add/edit/delete memories
+js/resource.js          open a node's linked file/folder or URL
 js/ui.js                card / toolbar / chat DOM controller
 docs/                   ARCHITECTURE / CODEPLAN / HANDOFF
 ```
@@ -157,6 +174,33 @@ docs/                   ARCHITECTURE / CODEPLAN / HANDOFF
 title/body/tag, and **search-and-click other memories in the link box** to connect
 them (the edge lines draw themselves). `⤓ export` copies the whole graph as JSON to
 paste into `data/memories.local.json`. Edits auto-save to your browser.
+
+`⟲ reset` wipes those in-browser edits (localStorage) and reloads straight from the
+data files. Reach for it if the graph seems "stuck" showing old nodes after you've
+changed `memories.local.json` — localStorage is the top layer, so an old saved
+snapshot there overrides your files and outlives a normal refresh. Reset dumps the
+old copy to the console first, so nothing's truly lost.
+
+## Linking files & sites to a memory
+
+A memory can point at a real **file or folder on your machine** and/or a **website**.
+In `✎ edit`, fill the **file / folder path** and/or **url** fields and save. The card
+then shows an **open section**:
+
+- **📂 open file** — opens the path in Explorer (a folder) or its default app (a file).
+  A browser can't do that itself, so `server.py`'s `/open` endpoint does it for it —
+  which is why you run `server.py`, not plain `http.server`.
+- **🔗 open site** — opens the URL in your default browser (through the same helper,
+  not `window.open` — so a *pinch* can't be popup-blocked), and shows a little
+  **preview tile** (title + thumbnail) fetched server-side via `/preview` (so CORS /
+  frame-blocking doesn't bite).
+
+Both buttons are **pinch-able**: with the webcam on, put your fingertip on one and
+pinch — it fires while the pinch is held over the button, so a slightly jittery aim
+still lands. Hands never have to leave the air.
+
+The path/url live on the node like any other field, so they ride along in export and
+stay in whichever data layer you saved them to (your gitignored local archive stays private).
 
 ## Cloned voice & local model
 
